@@ -4,4 +4,4 @@ It's a open source software for realization CHAdeMO standard: [2030.1.1-2015 - I
 
 Platform: Windows, macOS, Linux.
 
-##Terms
+## Terms
