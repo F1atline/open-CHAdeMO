@@ -232,7 +232,7 @@ Platform: Windows, macOS, Linux.
     </tbody>
 </table>
 
-### <a name="#102_fault"></a>Description fault flag (vehicle) ID:0x102
+### <a id="102_fault"></a>Description fault flag (vehicle) ID:0x102
 
 <table>
     <thead>
@@ -291,7 +291,7 @@ Platform: Windows, macOS, Linux.
     </tbody>
 </table>
 
-### <a name="#102_status"></a>Description status flag (vehicle) ID:0x102
+### <a id="102_status"></a>Description status flag (vehicle) ID:0x102
 
 <table>
     <thead>
@@ -350,7 +350,7 @@ Platform: Windows, macOS, Linux.
     </tbody>
 </table>
 
-### <a name="#109_status"></a>Description status / fault flag (charger), ID: 0x109
+### <a id="109_status"></a>Description status / fault flag (charger), ID: 0x109
 
 <table>
     <thead>
