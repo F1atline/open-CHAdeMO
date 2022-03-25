@@ -368,33 +368,33 @@ Platform: Windows, macOS, Linux.
             <td rowspan=4 align="center">3</td>
             <td>0</td>
             <td>Charger status</td>
-            <td>0: standby, 1: charging</td>
+            <td>0: standby,<br> 1: charging</td>
         </tr>
         <tr>
             <td>1</td>
             <td>Charger malfunction</td>
-            <td>0: normal, 1: fault</td>
+            <td>0: normal,<br> 1: fault</td>
         </tr>
         <tr>
             <td>2</td>
             <td>Charging connector lock</td>
-            <td>0: open, 1: locked</td>
+            <td>0: open,<br> 1: locked</td>
         </tr>
         <tr>
             <td>3</td>
             <td>Battery incompatibility</td>
-            <td>0: compatible, 1: incompatible</td>
+            <td>0: compatible,<br> 1: incompatible</td>
         </tr>
         <tr>
             <td rowspan=4 align="center">F</td>
             <td>4</td>
             <td>Charging system malfunction</td>
-            <td>0: normal, 1: malfunction</td>
+            <td>0: normal,<br> 1: malfunction</td>
         </tr>
         <tr>
             <td>5</td>
             <td>Charging stop control</td>
-            <td>0: operating, 1: stopped or stop charging</td>
+            <td>0: operating,<br> 1: stopped or stop charging</td>
         </tr>
         <tr>
             <td>6</td>
