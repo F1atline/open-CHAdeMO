@@ -25,8 +25,8 @@ class ChargerStatusType(str, Enum):
     charging = "Charging"
 
 class ConnectorLockStatusType(str, Enum):
-    close = "Close"
     open = "Open"
+    close = "Close"
 
 class BatteryIncompatibilityType(str, Enum):
     compatible = "Compatible"
@@ -36,6 +36,6 @@ class ChargingSystemMalfunctionType(str, Enum):
     normal = "Normal"
     malfunction = "Malfunction"
 
-class StatusChargingStopControlType(str, Enum):
+class ChargingStopControlType(str, Enum):
     operating = "Operating"
     stopped = "Stopped"
