@@ -1,6 +1,18 @@
 import logging
+import can
+import asyncio
+from can.notifier import MessageRecipient
+from typing import List
 from datatypes import *
 from enums import *
+
+can.Bus(  # type: ignore
+        interface="virtual", channel="vcan0", receive_own_messages=True
+    )
+
+def print_message(msg: can.Message) -> None:
+    """Regular callback function. Can also be a coroutine."""
+    print(msg)
 
 class source():
     def __init__(self,  support_EV_contactor_welding_detcection: bool = False,
@@ -65,11 +77,20 @@ class consumer:
         self.status = status
         self.charged_rate = charged_rate
 
-
-def main():
+async def main() -> None:
     charger = source()
     ev = consumer()
     logging.info("Started!")
+    reader = can.AsyncBufferedReader()
+    listeners: List[MessageRecipient] = [
+                print_message,  # Callback function
+                reader,  # AsyncBufferedReader() listener
+            ]
+    loop = asyncio.get_running_loop()
+    notifier = can.Notifier(can.Bus, listeners, loop=loop)
+    can.Bus.send(can.Message(arbitration_id=0xFF))
+    await reader.get_message()
+    notifier.stop()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
