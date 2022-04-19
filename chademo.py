@@ -37,7 +37,7 @@ class source():
         self.remaining_time_of_charging = remaining_time_of_charging
 
         self.canbus = can.Bus(  # type: ignore
-        interface="virtual", channel="vcan0", receive_own_messages=True)
+        interface="virtual", channel="vcan0", receive_own_messages=False)
 
         self.reader = can.AsyncBufferedReader()
 
@@ -54,6 +54,32 @@ class source():
     def listener(self, msg: can.Message) -> None:
         """Regular callback function. Can also be a coroutine."""
         logging.debug(msg)
+
+    def handle_message(self, msg: can.Message) -> None:
+        """Regular callback function. Can also be a coroutine."""
+
+        if msg.arbitration_id == 0x100:
+            logging.debug("Maximum battery voltage %d", msg.data[4] | msg.data[5]<<8)
+            logging.debug("Charged rate reference constant %d", msg.data[6])
+
+        if msg.arbitration_id == 0x101:
+            if msg.data[1] == 0xFF:
+                logging.debug("Maximum charging time (by seconds) %d", msg.data[1]*10)
+            else:
+                logging.debug("Maximum charging time (by seconds) %d", msg.data[1]*10)
+
+            logging.debug("Maximum charging time (by minute) %d", msg.data[2])
+            logging.debug("Estimated charging time (by minute) %d", msg.data[3])
+            logging.debug("Total capacity of battery kW %f", (msg.data[5] | msg.data[6]<<8)*0.1)
+
+        if msg.arbitration_id == 0x102:
+            logging.debug("Protocol number %d", msg.data[0])
+            logging.debug("Target battery voltage %d", msg.data[1] | msg.data[2]<<8)
+            logging.debug("Charging current request %d", msg.data[3])
+            logging.debug("Fault flag %d", msg.data[4])
+            logging.debug("Status flag %d", msg.data[5])
+            logging.debug("Charged rate %d", msg.data[6])
+
 
 class consumer:
 
@@ -93,7 +119,7 @@ class consumer:
         self.charged_rate = charged_rate
 
         self.canbus = can.Bus(  # type: ignore
-        interface="virtual", channel="vcan0", receive_own_messages=True)
+        interface="virtual", channel="vcan0", receive_own_messages=False)
 
         self.reader = can.AsyncBufferedReader()
 
@@ -113,16 +139,55 @@ class consumer:
 async def main() -> None:
     charger = source()
     charger.listeners.append(charger.listener)
+    charger.listeners.append(charger.handle_message)
     ev = consumer()
     logging.info("Started!")
     # Create Notifier with an explicit loop to use for scheduling of callbacks
     loop=asyncio.get_running_loop()
     notifier = can.Notifier(charger.canbus, charger.listeners, loop=loop)
 
-    ev.canbus.send(can.Message(arbitration_id=0x100, dlc=1, data=[1], is_extended_id=False))
+    ev.canbus.send(can.Message( arbitration_id=0x102, 
+                                dlc=8,
+                                data=[  0x0,
+                                        0x58,
+                                        0x02,
+                                        0x0,
+                                        0x0, 
+                                        0x0,
+                                        0x0, 
+                                        0x0 ], 
+                                is_extended_id=False))
     # Wait for last message to arrive
+    sleep(1.0)
+    ev.canbus.send(can.Message( arbitration_id=0x101, 
+                                dlc=8,
+                                data=[  0x0,
+                                        0xFF,
+                                        0x0A,
+                                        0x0A,
+                                        0x0, 
+                                        0x2C,
+                                        0x01, 
+                                        0x0 ], 
+                                is_extended_id=False))
+
+    await charger.reader.get_message()
+
     await charger.reader.get_message()
     sleep(1.0)
+    ev.canbus.send(can.Message( arbitration_id=0x100, 
+                                dlc=8,
+                                data=[  0x0,
+                                        0x0,
+                                        0x0,
+                                        0x0,
+                                        0x93, 
+                                        0x01,
+                                        0x64, 
+                                        0x0 ], 
+                                is_extended_id=False))
+
+    await charger.reader.get_message()
 
     # Clean-up
     notifier.stop()
