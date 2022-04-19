@@ -1,4 +1,5 @@
 import logging
+from time import sleep
 import can
 import asyncio
 from can.notifier import MessageRecipient
@@ -9,20 +10,6 @@ from enums import *
 logging.basicConfig(level=logging.DEBUG)
 
 class source():
-    canbus = can.Bus(  # type: ignore
-        interface="virtual", channel="vcan0", receive_own_messages=True
-    )
-
-    reader = can.AsyncBufferedReader()
-
-    def listener(self, msg: can.Message) -> None:
-        """Regular callback function. Can also be a coroutine."""
-        logging.error(msg)
-
-    listeners: List[MessageRecipient] = [
-        reader,  # AsyncBufferedReader() listener
-        listener,
-    ]
 
     def __init__(self,  support_EV_contactor_welding_detcection: bool = False,
                         available_output_voltage: int = 0,
@@ -49,15 +36,27 @@ class source():
         self.status = status
         self.remaining_time_of_charging = remaining_time_of_charging
 
+        self.canbus = can.Bus(  # type: ignore
+        interface="virtual", channel="vcan0", receive_own_messages=True)
 
+        self.reader = can.AsyncBufferedReader()
 
+        self.listeners: List[MessageRecipient] = [
+            self.reader,  # AsyncBufferedReader() listener
+            ]
 
+        filters = [ {"can_id": 0x100, "can_mask": 0x7FF, "extended": False},
+                    {"can_id": 0x101, "can_mask": 0x7FF, "extended": False},
+                    {"can_id": 0x102, "can_mask": 0x7FF, "extended": False}]
+
+        self.canbus.set_filters(filters)
+
+    def listener(self, msg: can.Message) -> None:
+        """Regular callback function. Can also be a coroutine."""
+        logging.debug(msg)
 
 class consumer:
-    canbus = can.Bus(  # type: ignore
-        interface="virtual", channel="vcan0", receive_own_messages=True
-    )
-    reader = can.AsyncBufferedReader()
+
     def __init__(self,  max_battery_voltage: int = 0,
                         charge_rate_ref_const: int = 0,
                         max_charging_time: int = 0,
@@ -93,15 +92,39 @@ class consumer:
         self.status = status
         self.charged_rate = charged_rate
 
+        self.canbus = can.Bus(  # type: ignore
+        interface="virtual", channel="vcan0", receive_own_messages=True)
+
+        self.reader = can.AsyncBufferedReader()
+
+        self.listeners: List[MessageRecipient] = [
+            self.reader,  # AsyncBufferedReader() listener
+            ]
+
+        filters = [ {"can_id": 0x108, "can_mask": 0x7FF, "extended": False},
+                    {"can_id": 0x109, "can_mask": 0x7FF, "extended": False}]
+
+        self.canbus.set_filters(filters)
+
+    def listener(self, msg: can.Message) -> None:
+        """Regular callback function. Can also be a coroutine."""
+        logging.debug(msg)
+
 async def main() -> None:
     charger = source()
+    charger.listeners.append(charger.listener)
     ev = consumer()
     logging.info("Started!")
-    
-    loop = asyncio.get_running_loop()
+    # Create Notifier with an explicit loop to use for scheduling of callbacks
+    loop=asyncio.get_running_loop()
     notifier = can.Notifier(charger.canbus, charger.listeners, loop=loop)
-    ev.canbus.send(can.Message(arbitration_id=0xFF))
+
+    ev.canbus.send(can.Message(arbitration_id=0x100, dlc=1, data=[1], is_extended_id=False))
+    # Wait for last message to arrive
     await charger.reader.get_message()
+    sleep(1.0)
+
+    # Clean-up
     notifier.stop()
 
 if __name__ == '__main__':
