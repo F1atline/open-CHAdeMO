@@ -6,15 +6,24 @@ from typing import List
 from datatypes import *
 from enums import *
 
-can.Bus(  # type: ignore
+logging.basicConfig(level=logging.DEBUG)
+
+class source():
+    canbus = can.Bus(  # type: ignore
         interface="virtual", channel="vcan0", receive_own_messages=True
     )
 
-def print_message(msg: can.Message) -> None:
-    """Regular callback function. Can also be a coroutine."""
-    print(msg)
+    reader = can.AsyncBufferedReader()
 
-class source():
+    def listener(self, msg: can.Message) -> None:
+        """Regular callback function. Can also be a coroutine."""
+        logging.error(msg)
+
+    listeners: List[MessageRecipient] = [
+        reader,  # AsyncBufferedReader() listener
+        listener,
+    ]
+
     def __init__(self,  support_EV_contactor_welding_detcection: bool = False,
                         available_output_voltage: int = 0,
                         available_output_current: int = 0,
@@ -41,7 +50,14 @@ class source():
         self.remaining_time_of_charging = remaining_time_of_charging
 
 
+
+
+
 class consumer:
+    canbus = can.Bus(  # type: ignore
+        interface="virtual", channel="vcan0", receive_own_messages=True
+    )
+    reader = can.AsyncBufferedReader()
     def __init__(self,  max_battery_voltage: int = 0,
                         charge_rate_ref_const: int = 0,
                         max_charging_time: int = 0,
@@ -81,15 +97,11 @@ async def main() -> None:
     charger = source()
     ev = consumer()
     logging.info("Started!")
-    reader = can.AsyncBufferedReader()
-    listeners: List[MessageRecipient] = [
-                print_message,  # Callback function
-                reader,  # AsyncBufferedReader() listener
-            ]
+    
     loop = asyncio.get_running_loop()
-    notifier = can.Notifier(can.Bus, listeners, loop=loop)
-    can.Bus.send(can.Message(arbitration_id=0xFF))
-    await reader.get_message()
+    notifier = can.Notifier(charger.canbus, charger.listeners, loop=loop)
+    ev.canbus.send(can.Message(arbitration_id=0xFF))
+    await charger.reader.get_message()
     notifier.stop()
 
 if __name__ == '__main__':
