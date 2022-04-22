@@ -9,38 +9,27 @@ from enums import *
 import sys
 import json
 
-settings = json.loads(sys.argv[1])
-
 logging.basicConfig(level=logging.DEBUG)
 
-class State:
-    def run(self):
-        assert 0, "run not implemented"
-    def next(self, state):
-        assert 0, "next not implemented"
+settings = {}
 
-class StateMachine:
-    def __init__(self, initialState):
-        self.currentState = initialState
-        self.currentState.run()
-    # Template method:
-    def runAll(self, states):
-        for i in states:
-            print(i)
-            self.currentState = self.currentState.next(i)
-            self.currentState.run()
+for _ in sys.argv[1:]:
+    settings.update(json.loads(_))
 
-class SourceAction:
-    def __init__(self, action):
-        self.action = action
-    def __str__(self): return self.action
-    def __cmp__(self, other):
-        return cmp(self.action, other.action)
-    # Necessary when __cmp__ or __eq__ is defined
-    # in order to make this class usable as a
-    # dictionary key:
-    def __hash__(self):
-        return hash(self.action)
+print(settings)
+
+class State():
+    def charging(self):
+        return
+    def precharge(self):
+        return
+    def wait_for_charge(self):
+        return
+    def charging_pause(self):
+        return
+    def end_of_charge(self):
+        return
+
 class source():
 
     def __init__(self,  support_EV_contactor_welding_detcection: bool = False,
@@ -56,7 +45,8 @@ class source():
                             battery_incompatibility = BatteryIncompatibilityType.incompatible,
                             charging_system_malfunction = ChargingSystemMalfunctionType.malfunction,
                             charging_stop_control = ChargingStopControlType.stopped),
-                        remaining_time_of_charging: int = 0):
+                        remaining_time_of_charging: int = 0
+                        ):
 
         self.support_EV_contactor_welding_detcection = support_EV_contactor_welding_detcection
         self.available_output_voltage = available_output_voltage
