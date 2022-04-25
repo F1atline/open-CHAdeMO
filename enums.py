@@ -39,3 +39,11 @@ class ChargingSystemMalfunctionType(str, Enum):
 class ChargingStopControlType(str, Enum):
     operating = "Operating"
     stopped = "Stopped"
+
+class StateType(Enum):
+    power_off = 0
+    fault = 1
+    wait_for_charge = 2
+    precharge = 3
+    charging = 4
+    end_of_charge = 5

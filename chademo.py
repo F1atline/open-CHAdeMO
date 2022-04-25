@@ -9,26 +9,14 @@ from enums import *
 import sys
 import json
 
+from abc import ABC, abstractmethod
+
 logging.basicConfig(level=logging.DEBUG)
 
 settings = {}
 
 for _ in sys.argv[1:]:
     settings.update(json.loads(_))
-
-print(settings)
-
-class State():
-    def charging(self):
-        return
-    def precharge(self):
-        return
-    def wait_for_charge(self):
-        return
-    def charging_pause(self):
-        return
-    def end_of_charge(self):
-        return
 
 class source():
 
@@ -58,6 +46,8 @@ class source():
         self.status = status
         self.remaining_time_of_charging = remaining_time_of_charging
 
+        self._state = StateType.power_off
+
         self.canbus = can.Bus(  # type: ignore
         interface=str(settings.get('interface_1')), channel=str(settings.get('channel_1')), receive_own_messages=False)
 
@@ -72,6 +62,48 @@ class source():
                     {"can_id": 0x102, "can_mask": 0x7FF, "extended": False}]
 
         self.canbus.set_filters(filters)
+
+    @property
+    def state(self):
+        return self._state
+
+    def power_off(self):
+        print(self._state)
+
+    def fault(self):
+        print(self._state)
+
+    def wait_for_charge(self):
+        print(self._state)
+
+    def precharge(self):
+        print(self._state)
+
+    def charging(self):
+        print(self._state)
+
+    def end_of_charge(self):
+        print(self._state)
+
+    @state.setter
+    def state(self, new_state: StateType):
+        if new_state != self.state:
+            self._state = new_state
+            if self._state == StateType.power_off:
+                return self.power_off()
+            if self._state == StateType.fault:
+                return self.fault()
+            if self._state == StateType.wait_for_charge:
+                return self.wait_for_charge()
+            if self._state == StateType.precharge:
+                return self.precharge()
+            if self._state == StateType.charging:
+                return self.charging()
+            if self._state == StateType.end_of_charge:
+                return self.end_of_charge()
+        else:
+            print("Already state: ", self._state.name)
+
 
     def listener(self, msg: can.Message) -> None:
         """Regular callback function. Can also be a coroutine."""
@@ -185,6 +217,7 @@ async def main() -> None:
     charger = source()
     charger.listeners.append(charger.listener) 
     charger.listeners.append(charger.handle_message)
+    charger.state = StateType.fault
     ev = consumer()
     ev.listeners.append(ev.listener) 
     ev.listeners.append(ev.handle_message)
@@ -270,5 +303,15 @@ async def main() -> None:
     notifier_charger.stop()
     notifier_ev.stop()
 
+def shutdown():
+    print("Call shutdown func")
+
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+    # except KeyboardInterrupt:
+        shutdown()
+        print("Finish!")
+        sys.exit(1)
+    
