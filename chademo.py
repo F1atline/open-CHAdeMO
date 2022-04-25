@@ -66,40 +66,66 @@ class source():
     def state(self):
         return self._state
 
-    def power_off(self):
+    def off(self):
         print(self._state)
 
     def fault(self):
         print(self._state)
 
-    def wait_for_charge(self):
-        print(self._state)
+    def standby(self):
+        logging.debug("wait push start button")
+        # TODO add loop for wait push start button
+        self.state = StateType.precharge
+            
 
-    def precharge(self):
-        print(self._state)
+    async def precharge(self):
+        # get data from EV and check compatibility
+        msg = await self.reader.get_message()
+
+        if msg.arbitration_id == 0x100:
+            logging.debug("Maximum battery voltage %d", msg.data[4] | msg.data[5]<<8)
+            if (msg.data[4] | msg.data[5]<<8) > self.available_output_voltage :
+                logging.warning("EV battery max voltage more then available")  
+            else:
+                logging.debug("pass max voltage")
+
+            # todo add checking this paraameter
+            logging.debug("Charged rate reference constant %d", msg.data[6])
+            
+        if msg.arbitration_id == 0x102:
+            logging.debug("Protocol number %d", msg.data[0])
+            logging.debug("Target battery voltage %d", msg.data[1] | msg.data[2]<<8)
+            logging.debug("Charging current request %d", msg.data[3])
+            logging.debug("Fault flag %d", msg.data[4])
+            logging.debug("Status flag %d", msg.data[5])
+            logging.debug("Charged rate %d", msg.data[6])
+
+        check_compatibility()
+
+        
 
     def charging(self):
         print(self._state)
 
-    def end_of_charge(self):
+    def finish(self):
         print(self._state)
 
     @state.setter
     def state(self, new_state: StateType):
         if new_state != self.state:
             self._state = new_state
-            if self._state == StateType.power_off:
-                return self.power_off()
+            if self._state == StateType.off:
+                return self.off()
             if self._state == StateType.fault:
                 return self.fault()
-            if self._state == StateType.wait_for_charge:
-                return self.wait_for_charge()
+            if self._state == StateType.standby:
+                return self.standby()
             if self._state == StateType.precharge:
                 return self.precharge()
             if self._state == StateType.charging:
                 return self.charging()
-            if self._state == StateType.end_of_charge:
-                return self.end_of_charge()
+            if self._state == StateType.finish:
+                return self.finish()
         else:
             print("Already state: ", self._state.name)
 
@@ -201,17 +227,16 @@ class consumer:
     def state(self):
         return self._state
 
-    def power_off(self):
+    def off(self):
         print(self._state)
 
     def fault(self):
         print(self._state)
 
-    async def wait_for_charge(self):
+    async def standby(self):
         # detect "f" signal ("Charge sequence signal 1") in loop
-        print("detect "f" signal")
+        logging.debug("detecting the F signal")
         # TODO add loop here
-        sleep(1)
 
         self.canbus.send(can.Message( arbitration_id=0x102, 
                                 dlc=8,
@@ -239,7 +264,7 @@ class consumer:
 
         msg = await self.reader.get_message()
 
-        
+
 
 
 
@@ -249,25 +274,25 @@ class consumer:
     def charging(self):
         print(self._state)
 
-    def end_of_charge(self):
+    def finish(self):
         print(self._state)
 
     @state.setter
     def state(self, new_state: StateType):
         if new_state != self.state:
             self._state = new_state
-            if self._state == StateType.power_off:
-                return self.power_off()
+            if self._state == StateType.off:
+                return self.off()
             if self._state == StateType.fault:
                 return self.fault()
-            if self._state == StateType.wait_for_charge:
-                return self.wait_for_charge()
+            if self._state == StateType.standby:
+                return self.standby()
             if self._state == StateType.precharge:
                 return self.precharge()
             if self._state == StateType.charging:
                 return self.charging()
-            if self._state == StateType.end_of_charge:
-                return self.end_of_charge()
+            if self._state == StateType.finish:
+                return self.finish()
         else:
             print("Already state: ", self._state.name)
 
@@ -312,7 +337,7 @@ async def main() -> None:
     notifier_charger = can.Notifier(charger.canbus, charger.listeners, loop=loop)
     notifier_ev = can.Notifier(ev.canbus, ev.listeners, loop=loop)
 
-    ev.state = StateType.wait_for_charge
+    ev.state = StateType.standby
 
     ev.canbus.send(can.Message( arbitration_id=0x102, 
                                 dlc=8,

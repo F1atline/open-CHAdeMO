@@ -41,9 +41,9 @@ class ChargingStopControlType(Enum):
     stopped = 1
 
 class StateType(Enum):
-    power_off = 0
+    off = 0
     fault = 1
-    wait_for_charge = 2
+    standby = 2
     precharge = 3
     charging = 4
-    end_of_charge = 5
+    finish = 5
