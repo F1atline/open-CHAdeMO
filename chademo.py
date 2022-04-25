@@ -8,8 +8,7 @@ from datatypes import *
 from enums import *
 import sys
 import json
-
-from abc import ABC, abstractmethod
+import pigpio
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -24,7 +23,7 @@ class source():
                         available_output_voltage: int = 0,
                         available_output_current: int = 0,
                         threshold_voltage: int = 0,
-                        protocol_number = CHAdeMOProtocolNumberType.ver_before_09,
+                        protocol_number = CHAdeMOProtocolNumberType.ver_100,
                         voltage: int = 0, current: int = 0,
                         status: ChargerStatusFaultFlagType = ChargerStatusFaultFlagType(
                         charger_status = ChargerStatusType.standby,
@@ -142,7 +141,7 @@ class consumer:
                         max_charging_time: int = 0,
                         estimated_charging_time: int = 0,
                         battery_total_capacity: int =0,
-                        protocol_number = CHAdeMOProtocolNumberType.ver_10,
+                        protocol_number = CHAdeMOProtocolNumberType.ver_100,
                         voltage: int = 0,
                         current_req: int =0,
                         fault_flags: VehicleFaultFlagType = VehicleFaultFlagType(
@@ -159,7 +158,8 @@ class consumer:
                             vehicle_status = EVContactorType.open,
                             normal_stop_request_before_charging = StopReqType.no_request
                         ),
-                        charged_rate: int = 0,):
+                        charged_rate: int = 0,
+                        battery_capacity: int = 0):
         self.max_battery_voltage = max_battery_voltage
         self.charge_rate_ref_const = charge_rate_ref_const
         self.max_charging_time = max_charging_time
@@ -171,6 +171,8 @@ class consumer:
         self.fault_flags = fault_flags
         self.status = status
         self.charged_rate = charged_rate
+
+        self._state = StateType.power_off
 
         self.canbus = can.Bus(  # type: ignore
         interface=str(settings.get('interface_2')), channel=str(settings.get('channel_2')), receive_own_messages=False)
@@ -185,6 +187,89 @@ class consumer:
                     {"can_id": 0x109, "can_mask": 0x7FF, "extended": False}]
 
         self.canbus.set_filters(filters)
+
+    def get_bat_voltage(self):
+        return self.target_voltage
+
+    def get_fault_flag(self):
+        return self.fault_flags.battery_overvoltage.value | self.fault_flags.battery_under_voltage.value << 1 | self.fault_flags.battery_current_deviation_error.value << 2 | self.fault_flags.high_battery_temperature.value << 3 | self.fault_flags.battery_voltage_deviation_error.value << 4
+    
+    def get_status_flag(self):
+        return self.status.vehicle_charging_enabled.value | self.status.vehicle_shift_position.value << 1 | self.status.charging_system_fault.value << 2 | self.status.vehicle_status.value << 3 | self.status.normal_stop_request_before_charging.value << 4
+
+    @property
+    def state(self):
+        return self._state
+
+    def power_off(self):
+        print(self._state)
+
+    def fault(self):
+        print(self._state)
+
+    async def wait_for_charge(self):
+        # detect "f" signal ("Charge sequence signal 1") in loop
+        print("detect "f" signal")
+        # TODO add loop here
+        sleep(1)
+
+        self.canbus.send(can.Message( arbitration_id=0x102, 
+                                dlc=8,
+                                data=[  self.protocol_number.value,
+                                        self.get_bat_voltage() & 0xFF,
+                                        (self.get_bat_voltage() & 0xFF00) >> 8,
+                                        self.current_req,
+                                        self.get_fault_flag(),
+                                        self.get_status_flag(),
+                                        self.charged_rate, 
+                                        0x0 ], 
+                                is_extended_id=False))
+
+        self.canbus.send(can.Message( arbitration_id=0x100, 
+                        dlc=8,
+                        data=[  self.protocol_number.value,
+                                self.get_bat_voltage() & 0xFF,
+                                (self.get_bat_voltage() & 0xFF00) >> 8,
+                                self.current_req,
+                                self.get_fault_flag(),
+                                self.get_status_flag(),
+                                self.charged_rate, 
+                                0x0 ], 
+                        is_extended_id=False))
+
+        msg = await self.reader.get_message()
+
+        
+
+
+
+    def precharge(self):
+        print(self._state)
+
+    def charging(self):
+        print(self._state)
+
+    def end_of_charge(self):
+        print(self._state)
+
+    @state.setter
+    def state(self, new_state: StateType):
+        if new_state != self.state:
+            self._state = new_state
+            if self._state == StateType.power_off:
+                return self.power_off()
+            if self._state == StateType.fault:
+                return self.fault()
+            if self._state == StateType.wait_for_charge:
+                return self.wait_for_charge()
+            if self._state == StateType.precharge:
+                return self.precharge()
+            if self._state == StateType.charging:
+                return self.charging()
+            if self._state == StateType.end_of_charge:
+                return self.end_of_charge()
+        else:
+            print("Already state: ", self._state.name)
 
     def handle_message(self, msg: can.Message) -> None:
         """Regular callback function. Can also be a coroutine."""
@@ -226,6 +311,9 @@ async def main() -> None:
     loop=asyncio.get_running_loop()
     notifier_charger = can.Notifier(charger.canbus, charger.listeners, loop=loop)
     notifier_ev = can.Notifier(ev.canbus, ev.listeners, loop=loop)
+
+    ev.state = StateType.wait_for_charge
+
     ev.canbus.send(can.Message( arbitration_id=0x102, 
                                 dlc=8,
                                 data=[  0x0,

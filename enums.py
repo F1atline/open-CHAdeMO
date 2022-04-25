@@ -1,44 +1,44 @@
 from enum import Enum
 
-class FaultType(str, Enum):
-    normal = "Normal"
-    fault = "Fault"
+class FaultType(Enum):
+    normal = 0
+    fault = 1
 
-class ChargingStatusType(str, Enum):
-    disabled = "Disabled"
-    enabled = "Enabled"
+class ChargingStatusType(Enum):
+    disabled = 0
+    enabled = 1
 
-class ShiftPositionType(str, Enum):
-    parking = "Parking"
-    other = "Other"
+class ShiftPositionType(Enum):
+    parking = 0
+    other = 1
 
-class EVContactorType(str, Enum):
-    close = "Close"
-    open = "Open"
+class EVContactorType(Enum):
+    close = 0
+    open = 1
 
-class StopReqType(str, Enum):
-    no_request = "NoRequest"
-    stop_request = "StopRequest"
+class StopReqType(Enum):
+    no_request = 0
+    stop_request = 1
 
-class ChargerStatusType(str, Enum):
-    standby = "Standby"
-    charging = "Charging"
+class ChargerStatusType(Enum):
+    standby = 0
+    charging = 1
 
-class ConnectorLockStatusType(str, Enum):
-    open = "Open"
-    close = "Close"
+class ConnectorLockStatusType(Enum):
+    open = 0
+    close = 1
 
-class BatteryIncompatibilityType(str, Enum):
-    compatible = "Compatible"
-    incompatible = "Incompatible"
+class BatteryIncompatibilityType(Enum):
+    compatible = 0
+    incompatible = 1
 
-class ChargingSystemMalfunctionType(str, Enum):
-    normal = "Normal"
-    malfunction = "Malfunction"
+class ChargingSystemMalfunctionType(Enum):
+    normal = 0
+    malfunction = 1
 
-class ChargingStopControlType(str, Enum):
-    operating = "Operating"
-    stopped = "Stopped"
+class ChargingStopControlType(Enum):
+    operating = 0
+    stopped = 1
 
 class StateType(Enum):
     power_off = 0

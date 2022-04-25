@@ -33,8 +33,8 @@ class ChargerStatusFaultFlagType:
 
 @dataclass(frozen=True)
 class CHAdeMOProtocolNumberType(Enum):
-    ver_before_09 = (0, 'before 09') 
-    ver_09 = (1, ('0.9', '0.9.1'))
-    ver_10 = (2, ('1.0.0', '1.0.1'))
-    ver_20 = (3, '2.0.0')
-    ver_30 = (4, '3.0.0')
+    ver_before_090 = 0
+    ver_090 = 1
+    ver_100 = 2
+    ver_200 = 3
+    ver_300 = 4
