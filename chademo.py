@@ -18,6 +18,8 @@ settings = {}
 
 for _ in sys.argv[1:]:
     settings.update(json.loads(_))
+if (str(settings.get('interface_2')) != "virtual"):
+    pi = pigpio.pi()
 
 class source():
 
@@ -306,6 +308,8 @@ class consumer:
 
     async def standby(self):
         # detect "f" signal ("Charge sequence signal 1") in loop
+        
+
         logging.debug("detecting the F signal")
         # TODO add loop here
 
@@ -333,7 +337,6 @@ class consumer:
                                 0x0 ], 
                         is_extended_id=False))
 
-        await asyncio.sleep(10)
         msg = await asyncio.wait_for(self.reader.get_message(), timeout=None)
         print(msg)
 
@@ -482,10 +485,9 @@ async def main() -> None:
 
     print("/n")
 
-    p = await asyncio.gather(ev.change_state(StateType.standby), charger.change_state(StateType.precharge))
-    print(p)
+    await asyncio.gather(ev.change_state(StateType.standby), charger.change_state(StateType.precharge))
 
-    # await asyncio.gather(*asyncio.all_tasks())
+    await asyncio.gather(*asyncio.all_tasks())
 
     # Clean-up
     notifier_charger.stop()
