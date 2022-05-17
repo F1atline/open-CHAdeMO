@@ -10,6 +10,19 @@ import sys
 import json
 import pigpio
 import tracemalloc
+from abc import abstractmethod
+
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
 tracemalloc.start()
 
 logging.basicConfig(level=logging.DEBUG)
@@ -23,7 +36,10 @@ if (str(settings.get('interface_2')) != "virtual"):
 
 class source():
 
-    def __init__(self,  support_EV_contactor_welding_detcection: bool = False,
+    # logger = logging.getLogger()
+
+    def __init__(self,  name: str = "source",
+                        support_EV_contactor_welding_detcection: bool = False,
                         available_output_voltage: int = 300,
                         available_output_current: int = 0,
                         threshold_voltage: int = 0,
@@ -38,7 +54,8 @@ class source():
                             charging_stop_control = ChargingStopControlType.stopped),
                         remaining_time_of_charging: int = 0
                         ):
-
+        self.__name = name
+        self.logger = logging.getLogger(self.__name)
         self.support_EV_contactor_welding_detcection = support_EV_contactor_welding_detcection
         self.available_output_voltage = available_output_voltage
         self.available_output_current = available_output_current
@@ -78,21 +95,28 @@ class source():
     def get_flag(self):
         return self.status.charger_malfunction.value | self.status.charger_malfunction.value << 1 | self.status.сharging_connector_lock.value << 2 | self.status.battery_incompatibility.value << 3 | self.status.charging_system_malfunction.value << 4 | self.status.charging_stop_control.value << 5
 
+    @abstractmethod
+    def get_onoff_state() -> bool:
+        raise NotImplementedError
 
     async def off(self):
-        print(self.state)
+        self.logger.debug(f"Now state: {self.state}")
+        await asyncio.sleep(1)
+        self.state = StateType.fault
 
     async def fault(self):
-        print(self.state)
+        self.logger.debug(f"Now state: {self.state}")
+        await asyncio.sleep(1)
+        self.state = StateType.standby
 
     async def standby(self):
-        logging.debug("wait push start button")
+        self.logger.debug("wait push start button")
         # TODO add loop for wait push start button
-        self.change_state(StateType.precharge)
+        await asyncio.sleep(0.3)
+        self.state = StateType.precharge
             
 
     async def precharge(self):
-        print("pre")
         # get data from EV and check compatibility
         compatibility = {"protocol_number": False, "max_voltage": False, "target_bat_voltage": False}
 
@@ -101,66 +125,67 @@ class source():
             msg = await self.reader.get_message()
             # handle message with id 100
             if msg.arbitration_id == 0x100:
-                logging.debug("Maximum battery voltage %d", msg.data[4] | msg.data[5]<<8)
+                self.logger.debug("Maximum battery voltage %d", msg.data[4] | msg.data[5]<<8)
 
                 # if (msg.data[4] | msg.data[5]<<8) > self.available_output_voltage :
-                #     logging.warning("EV battery max voltage more then available")
+                #     self.logger.warning("EV battery max voltage more then available")
                 #     raise AttributeError
                 # else:
-                #     logging.debug("pass max voltage")
+                #     self.logger.debug("pass max voltage")
                 #     compatibility["max_voltage"] = True
 
                 self.threshold_voltage = self.calculate_threshold_voltage(msg.data[4] | msg.data[5]<<8)
-                logging.debug("pass max voltage")
+                self.logger.debug("pass max voltage")
                 compatibility["max_voltage"] = True
 
                 # todo add checking this paraameter
-                logging.debug("Charged rate reference constant %d", msg.data[6])
+                self.logger.debug("Charged rate reference constant %d", msg.data[6])
             # handle message with id 101
             if msg.arbitration_id == 0x101:
                 if msg.data[1] == 0xFF:
-                    logging.debug("Maximum charging time (by seconds) %d", msg.data[1]*10)
+                    self.logger.debug("Maximum charging time (by seconds) %d", msg.data[1]*10)
                 else:
-                    logging.debug("Maximum charging time (by seconds) %d", msg.data[1]*10)
+                    self.logger.debug("Maximum charging time (by seconds) %d", msg.data[1]*10)
 
-                logging.debug("Maximum charging time (by minute) %d", msg.data[2])
-                logging.debug("Estimated charging time (by minute) %d", msg.data[3])
-                logging.debug("Total capacity of battery kW %f", (msg.data[5] | msg.data[6]<<8)*0.1)
+                self.logger.debug("Maximum charging time (by minute) %d", msg.data[2])
+                self.logger.debug("Estimated charging time (by minute) %d", msg.data[3])
+                self.logger.debug("Total capacity of battery kW %f", (msg.data[5] | msg.data[6]<<8)*0.1)
             # handle message with id 102
             if msg.arbitration_id == 0x102:
-                logging.debug("Protocol number %d", msg.data[0])
+                self.logger.debug("Protocol number %d", msg.data[0])
                 if msg.data[0] > self.protocol_number.value:
-                    logging.warning("EV protocol version higher than EVSE")
+                    self.logger.warning("EV protocol version higher than EVSE")
                     raise AttributeError
                 else:
-                    logging.debug("pass protocol version")
+                    self.logger.debug("pass protocol version")
                     compatibility["protocol_number"] = True
                 
-                logging.debug("Target battery voltage %d", msg.data[1] | msg.data[2]<<8)
+                self.logger.debug(bcolors.WARNING + "Target battery voltage %d" + bcolors.ENDC, msg.data[1] | msg.data[2]<<8)
                 if(compatibility["max_voltage"] == True):
+                    print(bcolors.WARNING + "CONT" + bcolors.ENDC)
                     continue
-                if ( (msg.data[1] | msg.data[2]<<8) <= self.threshold_voltage ):
-                    logging.warning("EV battery target voltage more then available")
+                if ( (msg.data[1] | msg.data[2]<<8) >= self.threshold_voltage ):
+                    self.logger.warning("EV battery target voltage more then available")
                     raise AttributeError
                 else:
-                    logging.debug("pass target battery voltage")
+                    self.logger.debug("pass target battery voltage")
                     compatibility["target_bat_voltage"] = True
 
-                logging.debug("Charging current request %d", msg.data[3])
-                logging.debug("Fault flag %d", msg.data[4])
-                logging.debug("Status flag %d", msg.data[5])
-                logging.debug("Charged rate %d", msg.data[6])
+                self.logger.debug("Charging current request %d", msg.data[3])
+                self.logger.debug("Fault flag %d", msg.data[4])
+                self.logger.debug("Status flag %d", msg.data[5])
+                self.logger.debug("Charged rate %d", msg.data[6])
 
-        logging.debug("passed compatibility process on EVSE side")
+        self.logger.debug("passed compatibility process on EVSE side")
 
         self.canbus.send(can.Message( arbitration_id=0x108, 
                         dlc=8,
-                        data=[  self.support_EV_contactor_welding_detcection,
+                        data=[  int(self.support_EV_contactor_welding_detcection),
                                 self.get_available_voltage() & 0xFF,
                                 (self.get_available_voltage() & 0xFF00) >> 8,
                                 self.get_available_current(),
-                                self.threshold_voltage,
-                                0x00,
+                                self.threshold_voltage & 0xFF,
+                                (self.threshold_voltage & 0xFF00) >> 8,
                                 0x00, 
                                 0x00 ], 
                         is_extended_id=False))
@@ -183,63 +208,68 @@ class source():
         
 
     async def charging(self):
-        print(self._state)
+        self.logger.debug(f"Now state: {self.state}")
+        await asyncio.sleep(0.3)
 
     async def finish(self):
-        print(self._state)
+        self.logger.debug(f"Now state: {self.state}")
+        await asyncio.sleep(0.3)
 
-    async def change_state(self, new_state: StateType):
-        if new_state != self.state:
-            self.state = new_state
+    async def scheduler(self) -> None:
+        while True:
             if self.state == StateType.off:
-                return self.off()
+                await self.off()
+                continue
             if self.state == StateType.fault:
-                return self.fault()
+                await self.fault()
+                continue
             if self.state == StateType.standby:
                 await self.standby()
+                continue
             if self.state == StateType.precharge:
                 await self.precharge()
+                continue
             if self.state == StateType.charging:
-                return self.charging()
+                await self.charging()
+                continue
             if self.state == StateType.finish:
-                return self.finish()
-        else:
-            print("Already state: ", self.state.name)
+                await self.finish()
 
 
     def listener(self, msg: can.Message) -> None:
         """Regular callback function. Can also be a coroutine."""
-        logging.debug(msg)
+        self.logger.debug(msg)
 
     def handle_message(self, msg: can.Message) -> None:
         """Regular callback function. Can also be a coroutine."""
 
         if msg.arbitration_id == 0x100:
-            logging.debug("Maximum battery voltage %d", msg.data[4] | msg.data[5]<<8)
-            logging.debug("Charged rate reference constant %d", msg.data[6])
+            self.logger.debug("Maximum battery voltage %d", msg.data[4] | msg.data[5]<<8)
+            self.logger.debug("Charged rate reference constant %d", msg.data[6])
 
         if msg.arbitration_id == 0x101:
             if msg.data[1] == 0xFF:
-                logging.debug("Maximum charging time (by seconds) %d", msg.data[1]*10)
+                self.logger.debug("Maximum charging time (by seconds) %d", msg.data[1]*10)
             else:
-                logging.debug("Maximum charging time (by seconds) %d", msg.data[1]*10)
+                self.logger.debug("Maximum charging time (by seconds) %d", msg.data[1]*10)
 
-            logging.debug("Maximum charging time (by minute) %d", msg.data[2])
-            logging.debug("Estimated charging time (by minute) %d", msg.data[3])
-            logging.debug("Total capacity of battery kW %f", (msg.data[5] | msg.data[6]<<8)*0.1)
+            self.logger.debug("Maximum charging time (by minute) %d", msg.data[2])
+            self.logger.debug("Estimated charging time (by minute) %d", msg.data[3])
+            self.logger.debug("Total capacity of battery kW %f", (msg.data[5] | msg.data[6]<<8)*0.1)
 
         if msg.arbitration_id == 0x102:
-            logging.debug("Protocol number %d", msg.data[0])
-            logging.debug("Target battery voltage %d", msg.data[1] | msg.data[2]<<8)
-            logging.debug("Charging current request %d", msg.data[3])
-            logging.debug("Fault flag %d", msg.data[4])
-            logging.debug("Status flag %d", msg.data[5])
-            logging.debug("Charged rate %d", msg.data[6])
+            self.logger.debug("Protocol number %d", msg.data[0])
+            self.logger.debug("Target battery voltage %d", msg.data[1] | msg.data[2]<<8)
+            self.logger.debug("Charging current request %d", msg.data[3])
+            self.logger.debug("Fault flag %d", msg.data[4])
+            self.logger.debug("Status flag %d", msg.data[5])
+            self.logger.debug("Charged rate %d", msg.data[6])
 
 
 class consumer:
 
-    def __init__(self,  max_battery_voltage: int = 300,
+    def __init__(self,  name: str = "consumer",
+                        max_battery_voltage: int = 300,
                         charge_rate_ref_const: int = 0,
                         max_charging_time: int = 0,
                         estimated_charging_time: int = 0,
@@ -263,6 +293,8 @@ class consumer:
                         ),
                         charged_rate: int = 0,
                         battery_capacity: int = 0):
+        self.__name = name
+        self.logger = logging.getLogger(self.__name)
         self.max_battery_voltage = max_battery_voltage
         self.charge_rate_ref_const = charge_rate_ref_const
         self.max_charging_time = max_charging_time
@@ -301,16 +333,21 @@ class consumer:
         return self.status.vehicle_charging_enabled.value | self.status.vehicle_shift_position.value << 1 | self.status.charging_system_fault.value << 2 | self.status.vehicle_status.value << 3 | self.status.normal_stop_request_before_charging.value << 4
 
     async def off(self):
-        print(self.state)
+        self.logger.debug(f"Now state: {self.state}")
+        await asyncio.sleep(1)
+        self.state = StateType.fault
 
     async def fault(self):
-        print(self.state)
+        self.logger.debug(f"Now state: {self.state}")
+        await asyncio.sleep(1)
+        self.state = StateType.standby
 
     async def standby(self):
+
         # detect "f" signal ("Charge sequence signal 1") in loop
         
 
-        logging.debug("detecting the F signal")
+        self.logger.debug("detecting the F signal")
         # TODO add loop here
 
         self.canbus.send(can.Message( arbitration_id=0x102, 
@@ -341,65 +378,69 @@ class consumer:
         print(msg)
 
     async def precharge(self):
-        print(self.state)
+        self.logger.debug(f"Now state: {self.state}")
+        await asyncio.sleep(0.3)
 
     async def charging(self):
-        print(self.state)
+        self.logger.debug(f"Now state: {self.state}")
+        await asyncio.sleep(0.3)
 
     async def finish(self):
-        print(self.state)
+        self.logger.debug(f"Now state: {self.state}")
+        await asyncio.sleep(0.3)
 
-    async def change_state(self, new_state: StateType) -> None:
-        if new_state != self.state:
-            self.state = new_state
+    async def scheduler(self) -> None:
+        while True:
             if self.state == StateType.off:
-                return self.off()
+                await self.off()
+                continue
             if self.state == StateType.fault:
-                return self.fault()
+                await self.fault()
+                continue
             if self.state == StateType.standby:
                 await self.standby()
+                continue
             if self.state == StateType.precharge:
-                return self.precharge()
+                await self.precharge()
+                continue
             if self.state == StateType.charging:
-                return self.charging()
+                await self.charging()
+                continue
             if self.state == StateType.finish:
-                return self.finish()
-        else:
-            print("Already state: ", self.state.name)
+                await self.finish()
 
     def handle_message(self, msg: can.Message) -> None:
         """Regular callback function. Can also be a coroutine."""
 
         if msg.arbitration_id == 0x108:
             if msg.data[0] == 0x00:
-                logging.debug("Identifier of support for EV contactor welding detection: Not supporting EV contactor welding detection")
+                self.logger.debug("Identifier of support for EV contactor welding detection: Not supporting EV contactor welding detection")
             else:
-                logging.debug("Identifier of support for EV contactor welding detection %d", msg.data[0])
-            logging.debug("Available output voltage %d", msg.data[1] | msg.data[2]<<8)
-            logging.debug("Available output current %d", msg.data[3])
-            logging.debug("Threshold voltage %d", msg.data[4] | msg.data[2]<<5)
+                self.logger.debug("Identifier of support for EV contactor welding detection %d", msg.data[0])
+            self.logger.debug("Available output voltage %d", msg.data[1] | msg.data[2]<<8)
+            self.logger.debug("Available output current %d", msg.data[3])
+            self.logger.debug("Threshold voltage %d", msg.data[4] | msg.data[2]<<5)
 
         if msg.arbitration_id == 0x109:
-            logging.debug("Protocol number %d", msg.data[0])
-            logging.debug("Present output voltage %d", msg.data[1] | msg.data[2]<<8)
-            logging.debug("Present charging current %d", msg.data[3])
-            logging.debug("Status / fault flag %d", msg.data[5])
+            self.logger.debug("Protocol number %d", msg.data[0])
+            self.logger.debug("Present output voltage %d", msg.data[1] | msg.data[2]<<8)
+            self.logger.debug("Present charging current %d", msg.data[3])
+            self.logger.debug("Status / fault flag %d", msg.data[5])
             if msg.data[6] == 0xFF:
-                logging.debug("Maximum charging time (by seconds): usage by minute")
+                self.logger.debug("Maximum charging time (by seconds): usage by minute")
             else:
-                logging.debug("Maximum charging time (by seconds) %d", msg.data[6]*10)
-            logging.debug("Remaining charging time (by by minute) %d", msg.data[7])
+                self.logger.debug("Maximum charging time (by seconds) %d", msg.data[6]*10)
+            self.logger.debug("Remaining charging time (by by minute) %d", msg.data[7])
 
     def listener(self, msg: can.Message) -> None:
         """Regular callback function. Can also be a coroutine."""
-        logging.debug(msg)
+        self.logger.debug(msg)
 
 async def main() -> None:
-    charger = source()
+    charger = source(name = "CH")
     charger.listeners.append(charger.listener) 
     charger.listeners.append(charger.handle_message)
-    charger.state = StateType.fault
-    ev = consumer()
+    ev = consumer(name = "EV")
     ev.listeners.append(ev.listener) 
     ev.listeners.append(ev.handle_message)
     logging.info("Started!")
@@ -483,11 +524,12 @@ async def main() -> None:
 
     # await ev.reader.get_message()
 
-    print("/n")
+    # await charger.scheduler()
+    # await ev.scheduler()
 
-    await asyncio.gather(ev.change_state(StateType.standby), charger.change_state(StateType.precharge))
+    await asyncio.gather(charger.scheduler(), ev.scheduler())
 
-    await asyncio.gather(*asyncio.all_tasks())
+    # await asyncio.gather(*asyncio.all_tasks())
 
     # Clean-up
     notifier_charger.stop()
