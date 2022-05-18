@@ -12,20 +12,20 @@ import pigpio
 import tracemalloc
 from abc import abstractmethod
 
-class bcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKCYAN = '\033[96m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
+class LogColorsAndFormats:
+    end =       '\033[0m'
+    magenta =   '\033[95m'
+    blue =      '\033[94m'
+    cyan =      '\033[96m'
+    green =     '\033[92m'
+    yellow =    '\033[93m'
+    red =       '\033[91m'
+    bold =      '\033[1m'
+    underline = '\033[4m'
 
 tracemalloc.start()
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(name)-10s %(levelname)8s: %(message)s')
 
 settings = {}
 
@@ -42,7 +42,7 @@ class source():
                         support_EV_contactor_welding_detcection: bool = False,
                         available_output_voltage: int = 300,
                         available_output_current: int = 0,
-                        threshold_voltage: int = 0,
+                        threshold_voltage: int = 300,
                         protocol_number = CHAdeMOProtocolNumberType.ver_100,
                         voltage: int = 0, current: int = 0,
                         status: ChargerStatusFaultFlagType = ChargerStatusFaultFlagType(
@@ -54,7 +54,7 @@ class source():
                             charging_stop_control = ChargingStopControlType.stopped),
                         remaining_time_of_charging: int = 0
                         ):
-        self.__name = name
+        self.__name = LogColorsAndFormats.blue + name + LogColorsAndFormats.end
         self.logger = logging.getLogger(self.__name)
         self.support_EV_contactor_welding_detcection = support_EV_contactor_welding_detcection
         self.available_output_voltage = available_output_voltage
@@ -83,8 +83,8 @@ class source():
 
         self.canbus.set_filters(filters)
 
-    def calculate_threshold_voltage(self, max_voltage):
-        return min(max_voltage, self.available_output_voltage)
+    def calculate_threshold_voltage(self, max_voltage, available_output_voltage):
+        return min(max_voltage, available_output_voltage)
 
     def get_available_voltage(self):
         return self.available_output_voltage
@@ -100,17 +100,14 @@ class source():
         raise NotImplementedError
 
     async def off(self):
-        self.logger.debug(f"Now state: {self.state}")
         await asyncio.sleep(1)
         self.state = StateType.fault
 
     async def fault(self):
-        self.logger.debug(f"Now state: {self.state}")
         await asyncio.sleep(1)
         self.state = StateType.standby
 
     async def standby(self):
-        self.logger.debug("wait push start button")
         # TODO add loop for wait push start button
         await asyncio.sleep(0.3)
         self.state = StateType.precharge
@@ -134,7 +131,7 @@ class source():
                 #     self.logger.debug("pass max voltage")
                 #     compatibility["max_voltage"] = True
 
-                self.threshold_voltage = self.calculate_threshold_voltage(msg.data[4] | msg.data[5]<<8)
+                self.threshold_voltage = self.calculate_threshold_voltage( max_voltage = (msg.data[4] | msg.data[5]<<8), available_output_voltage = self.available_output_voltage )
                 self.logger.debug("pass max voltage")
                 compatibility["max_voltage"] = True
 
@@ -153,6 +150,8 @@ class source():
             # handle message with id 102
             if msg.arbitration_id == 0x102:
                 self.logger.debug("Protocol number %d", msg.data[0])
+                if(compatibility["protocol_number"] == True):
+                    continue
                 if msg.data[0] > self.protocol_number.value:
                     self.logger.warning("EV protocol version higher than EVSE")
                     raise AttributeError
@@ -160,9 +159,8 @@ class source():
                     self.logger.debug("pass protocol version")
                     compatibility["protocol_number"] = True
                 
-                self.logger.debug(bcolors.WARNING + "Target battery voltage %d" + bcolors.ENDC, msg.data[1] | msg.data[2]<<8)
+                self.logger.debug(LogColorsAndFormats.yellow + "Target battery voltage %d" + LogColorsAndFormats.end, msg.data[1] | msg.data[2]<<8)
                 if(compatibility["max_voltage"] == True):
-                    print(bcolors.WARNING + "CONT" + bcolors.ENDC)
                     continue
                 if ( (msg.data[1] | msg.data[2]<<8) >= self.threshold_voltage ):
                     self.logger.warning("EV battery target voltage more then available")
@@ -208,15 +206,14 @@ class source():
         
 
     async def charging(self):
-        self.logger.debug(f"Now state: {self.state}")
         await asyncio.sleep(0.3)
 
     async def finish(self):
-        self.logger.debug(f"Now state: {self.state}")
         await asyncio.sleep(0.3)
 
     async def scheduler(self) -> None:
         while True:
+            self.logger.debug(f"Change state to: {self.state}")
             if self.state == StateType.off:
                 await self.off()
                 continue
@@ -293,7 +290,7 @@ class consumer:
                         ),
                         charged_rate: int = 0,
                         battery_capacity: int = 0):
-        self.__name = name
+        self.__name = LogColorsAndFormats.green + name + LogColorsAndFormats.end
         self.logger = logging.getLogger(self.__name)
         self.max_battery_voltage = max_battery_voltage
         self.charge_rate_ref_const = charge_rate_ref_const
@@ -333,20 +330,15 @@ class consumer:
         return self.status.vehicle_charging_enabled.value | self.status.vehicle_shift_position.value << 1 | self.status.charging_system_fault.value << 2 | self.status.vehicle_status.value << 3 | self.status.normal_stop_request_before_charging.value << 4
 
     async def off(self):
-        self.logger.debug(f"Now state: {self.state}")
         await asyncio.sleep(1)
         self.state = StateType.fault
 
     async def fault(self):
-        self.logger.debug(f"Now state: {self.state}")
         await asyncio.sleep(1)
         self.state = StateType.standby
 
     async def standby(self):
-
         # detect "f" signal ("Charge sequence signal 1") in loop
-        
-
         self.logger.debug("detecting the F signal")
         # TODO add loop here
 
@@ -364,33 +356,34 @@ class consumer:
 
         self.canbus.send(can.Message( arbitration_id=0x100, 
                         dlc=8,
-                        data=[  self.protocol_number.value,
-                                self.get_bat_voltage() & 0xFF,
-                                (self.get_bat_voltage() & 0xFF00) >> 8,
-                                self.current_req,
-                                self.get_fault_flag(),
-                                self.get_status_flag(),
-                                self.charged_rate, 
+                        data=[  0x0,
+                                0x0,
+                                0x0,
+                                0x0,
+                                self.max_battery_voltage & 0xFF,
+                                (self.max_battery_voltage & 0xFF00) >> 8,
+                                self.charge_rate_ref_const,
                                 0x0 ], 
                         is_extended_id=False))
 
-        msg = await asyncio.wait_for(self.reader.get_message(), timeout=None)
-        print(msg)
+        msg = await self.reader.get_message()
+
+        compatibility = {"protocol_number": False, "max_voltage": False, "target_bat_voltage": False}
+        
+        self.state = StateType.precharge
 
     async def precharge(self):
-        self.logger.debug(f"Now state: {self.state}")
         await asyncio.sleep(0.3)
 
     async def charging(self):
-        self.logger.debug(f"Now state: {self.state}")
         await asyncio.sleep(0.3)
 
     async def finish(self):
-        self.logger.debug(f"Now state: {self.state}")
         await asyncio.sleep(0.3)
 
     async def scheduler(self) -> None:
         while True:
+            self.logger.debug(f"Change state to: {self.state}")
             if self.state == StateType.off:
                 await self.off()
                 continue
@@ -419,7 +412,7 @@ class consumer:
                 self.logger.debug("Identifier of support for EV contactor welding detection %d", msg.data[0])
             self.logger.debug("Available output voltage %d", msg.data[1] | msg.data[2]<<8)
             self.logger.debug("Available output current %d", msg.data[3])
-            self.logger.debug("Threshold voltage %d", msg.data[4] | msg.data[2]<<5)
+            self.logger.debug("Threshold voltage %d", msg.data[4] | msg.data[5]<<8)
 
         if msg.arbitration_id == 0x109:
             self.logger.debug("Protocol number %d", msg.data[0])
