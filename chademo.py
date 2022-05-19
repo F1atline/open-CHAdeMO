@@ -39,9 +39,9 @@ class Source():
 
     def __init__(self,  name: str = "source",
                         support_EV_contactor_welding_detcection: bool = False,
-                        available_output_voltage: int = 300,
+                        available_output_voltage: int = 0,
                         available_output_current: int = 0,
-                        threshold_voltage: int = 300,
+                        threshold_voltage: int = 0,
                         protocol_number = CHAdeMOProtocolNumberType.ver_100,
                         voltage: int = 0, current: int = 0,
                         status: ChargerStatusFaultFlagType = ChargerStatusFaultFlagType(charger_status = ChargerStatusType.standby,
@@ -122,13 +122,15 @@ class Source():
 
     async def precharge(self):
         # get data from EV and check compatibility
-        compatibility = {"protocol_number": False, "max_voltage": False, "target_bat_voltage": False}
+        compatibility = {"protocol_number": False, "max_voltage": False, "target_bat_voltage": False, "threshold_voltage": False}
 
         while(  (compatibility.get("protocol_number") == False)
                 or
                 (compatibility.get("max_voltage") == False)
                 or 
-                (compatibility.get("target_bat_voltage") == False)):
+                (compatibility.get("target_bat_voltage") == False)
+                or
+                (compatibility.get("threshold_voltage") == False)):
             
             msg = await self.reader.get_message()
             # handle message with id 100
@@ -143,6 +145,7 @@ class Source():
                 #     compatibility["max_voltage"] = True
 
                 self.threshold_voltage = self.calculate_threshold_voltage( max_voltage = (msg.data[4] | msg.data[5]<<8), available_output_voltage = self.available_output_voltage )
+                compatibility["threshold_voltage"] = True
                 self.logger.debug("pass max voltage")
                 compatibility["max_voltage"] = True
 
@@ -172,6 +175,8 @@ class Source():
                 
                 self.logger.debug(LogColorsAndFormats.yellow + "Target battery voltage %d" + LogColorsAndFormats.end, msg.data[1] | msg.data[2]<<8)
                 if(compatibility["max_voltage"] == True):
+                    continue
+                if(compatibility["threshold_voltage"] == False):
                     continue
                 if ( (msg.data[1] | msg.data[2]<<8) >= self.threshold_voltage ):
                     self.logger.warning("EV battery target voltage more then available")
@@ -546,87 +551,7 @@ async def main() -> None:
     notifier_charger = can.Notifier(charger.canbus, charger.listeners, loop=loop)
     notifier_ev = can.Notifier(ev.canbus, ev.listeners, loop=loop)
 
-    # ev.state = StateType.standby
-
-    # ev.canbus.send(can.Message( arbitration_id=0x102, 
-    #                             dlc=8,
-    #                             data=[  0x0,
-    #                                     0x58,
-    #                                     0x02,
-    #                                     0x0,
-    #                                     0x0, 
-    #                                     0x0,
-    #                                     0x0, 
-    #                                     0x0 ], 
-    #                             is_extended_id=False))
-    # # Wait for last message to arrive
-    # sleep(1.0)
-    # ev.canbus.send(can.Message( arbitration_id=0x101, 
-    #                             dlc=8,
-    #                             data=[  0x0,
-    #                                     0xFF,
-    #                                     0x0A,
-    #                                     0x0A,
-    #                                     0x0, 
-    #                                     0x2C,
-    #                                     0x01, 
-    #                                     0x0 ], 
-    #                             is_extended_id=False))
-
-    # await charger.reader.get_message()
-
-    # await charger.reader.get_message()
-    # sleep(1.0)
-    # ev.canbus.send(can.Message( arbitration_id=0x100, 
-    #                             dlc=8,
-    #                             data=[  0x0,
-    #                                     0x0,
-    #                                     0x0,
-    #                                     0x0,
-    #                                     0x93, 
-    #                                     0x01,
-    #                                     0x64, 
-    #                                     0x0 ], 
-    #                             is_extended_id=False))
-
-    # await charger.reader.get_message()
-
-    # sleep(1.0)
-    # charger.canbus.send(can.Message( arbitration_id=0x108, 
-    #                             dlc=8,
-    #                             data=[  0x0,
-    #                                     0x93,
-    #                                     0x01,
-    #                                     0xFF,
-    #                                     0x93, 
-    #                                     0x01,
-    #                                     0x0, 
-    #                                     0x0 ], 
-    #                             is_extended_id=False))
-
-    # await ev.reader.get_message()
-
-    # sleep(1.0)
-    # charger.canbus.send(can.Message( arbitration_id=0x109, 
-    #                             dlc=8,
-    #                             data=[  0x01,
-    #                                     0x93,
-    #                                     0x01,
-    #                                     0xFF,
-    #                                     0x0, 
-    #                                     0xFF,
-    #                                     0xFF, 
-    #                                     0x0F ], 
-    #                             is_extended_id=False))
-
-    # await ev.reader.get_message()
-
-    # await charger.scheduler()
-    # await ev.scheduler()
-
     await asyncio.gather(charger.scheduler(), ev.scheduler())
-
-    # await asyncio.gather(*asyncio.all_tasks())
 
     # Clean-up
     notifier_charger.stop()
