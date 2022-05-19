@@ -1,5 +1,4 @@
 import logging
-from time import sleep
 import can
 import asyncio
 from can.notifier import MessageRecipient
@@ -212,15 +211,20 @@ class Source():
                                 0x00 ], 
                         is_extended_id=False))
 
-        # go to precharge state
+        # detect "j" signal ("Vehicle charge permission") in loop
+        # Check that EV contactors are surely opened (Voltage on output terminals is less than 10V.)
+        # Insulation test on output DC circuit
+        # Check the termination of insulation test (Voltage on output terminals is less than 20V.)
+        # go to charge state
         self.state = StateType.charging
 
-        
-
     async def charging(self):
+        # set current 
+        # detecting stop signal
         await asyncio.sleep(0.3)
 
     async def finish(self):
+        # 
         await asyncio.sleep(0.3)
 
     async def scheduler(self) -> None:
@@ -461,12 +465,21 @@ class Consumer:
         self.state = StateType.precharge
 
     async def precharge(self):
+        # turn ON switch "k"
+        # detect "g" signal ("Charge sequence signal 2") in loop
+        self.state = StateType.charging
         await asyncio.sleep(0.3)
 
     async def charging(self):
+        # check erorrs
+        # calculate current
+        # send current request or go to finish
         await asyncio.sleep(0.3)
 
     async def finish(self):
+        # Check that DC current is less than 5A
+        # Open EV main relay 'c
+        # Terminate CAN communication
         await asyncio.sleep(0.3)
 
     async def scheduler(self) -> None:
