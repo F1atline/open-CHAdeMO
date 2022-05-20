@@ -536,9 +536,9 @@ class Consumer:
         self.logger.debug(msg)
 
 async def main() -> None:
-    charger = Source(name = "CH", available_output_current=settings.get("CH_available_output_current"))
-    charger.listeners.append(charger.listener) 
-    charger.listeners.append(charger.handle_message)
+    # charger = Source(name = "CH", available_output_current=settings.get("CH_available_output_current"))
+    # charger.listeners.append(charger.listener) 
+    # charger.listeners.append(charger.handle_message)
     ev = Consumer(name = "EV",  max_battery_voltage=settings.get("EV_max_battery_voltage"),
                                 max_battery_current=settings.get("EV_max_battery_current"),
                                 voltage=settings.get("EV_battery_voltage"),
@@ -548,13 +548,14 @@ async def main() -> None:
     logging.info("Started!")
     # Create Notifier with an explicit loop to use for scheduling of callbacks
     loop=asyncio.get_running_loop()
-    notifier_charger = can.Notifier(charger.canbus, charger.listeners, loop=loop)
+    # notifier_charger = can.Notifier(charger.canbus, charger.listeners, loop=loop)
     notifier_ev = can.Notifier(ev.canbus, ev.listeners, loop=loop)
 
-    await asyncio.gather(charger.scheduler(), ev.scheduler())
+    # await asyncio.gather(charger.scheduler(), ev.scheduler())
+    await asyncio.gather(ev.scheduler())
 
     # Clean-up
-    notifier_charger.stop()
+    # notifier_charger.stop()
     notifier_ev.stop()
 
 def shutdown():
