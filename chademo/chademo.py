@@ -3,12 +3,13 @@ import can
 import asyncio
 from can.notifier import MessageRecipient
 from typing import List
-from datatypes import *
-from enums import *
+from chademo.datatypes import *
+from chademo.enums import *
 import sys
 import json
 import pigpio
 import tracemalloc
+from typing import Dict
 from abc import abstractmethod
 
 class LogColorsAndFormats:
@@ -26,18 +27,19 @@ tracemalloc.start()
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(name)-10s %(levelname)8s: %(message)s')
 
-settings = {}
+# settings = {}
 
-for _ in sys.argv[1:]:
-    settings.update(json.loads(_))
-if (str(settings.get('interface_2')) != "virtual"):
-    pi = pigpio.pi()
+# for _ in sys.argv[1:]:
+#     settings.update(json.loads(_))
+# if (str(settings.get('interface_2')) != "virtual"):
+#     pi = pigpio.pi()
 
 class Source():
 
     # logger = logging.getLogger()
 
     def __init__(self,  name: str = "source",
+                        CANbus: Dict = {"interface": "virtual", "channel": "vcan0"},
                         support_EV_contactor_welding_detcection: bool = False,
                         available_output_voltage: int = 0,
                         available_output_current: int = 0,
@@ -67,7 +69,7 @@ class Source():
         self.state = StateType.off
 
         self.canbus = can.Bus(  # type: ignore
-        interface=str(settings.get('interface_1')), channel=str(settings.get('channel_1')), receive_own_messages=False)
+        interface=str(CANbus.get('interface')), channel=str(CANbus.get('channel')), receive_own_messages=False)
 
         self.reader = can.AsyncBufferedReader()
 
@@ -287,6 +289,7 @@ class Source():
 class Consumer:
 
     def __init__(self,  name: str = "consumer",
+                        CANbus: Dict = {"interface": "virtual", "channel": "vcan0"},
                         max_battery_voltage: int = 300,
                         charge_rate_ref_const: int = 0,
                         max_charging_time: int = 0,
@@ -328,7 +331,7 @@ class Consumer:
         self.state = StateType.off
 
         self.canbus = can.Bus(  # type: ignore
-        interface=str(settings.get('interface_2')), channel=str(settings.get('channel_2')), receive_own_messages=False)
+        interface=str(CANbus.get('interface')), channel=str(CANbus.get('channel')), receive_own_messages=False)
         
         self.reader = can.AsyncBufferedReader()
 

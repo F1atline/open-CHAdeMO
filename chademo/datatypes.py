@@ -4,7 +4,7 @@ from json import detect_encoding
 from telnetlib import STATUS
 from typing import Optional
 
-from enums import *
+from chademo.enums import *
 
 @dataclass
 class VehicleFaultFlagType:
