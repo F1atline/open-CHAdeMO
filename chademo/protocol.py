@@ -1,13 +1,17 @@
+import sys
+import os
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(SCRIPT_DIR))
+
 import logging
 import can
 import asyncio
-from can.notifier import MessageRecipient
 from typing import List
 from chademo.datatypes import *
 from chademo.enums import *
-import sys
+
 import json
-import pigpio
 import tracemalloc
 from typing import Dict
 from abc import abstractmethod
@@ -27,12 +31,11 @@ tracemalloc.start()
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(name)-10s %(levelname)8s: %(message)s')
 
-# settings = {}
+settings = {}
 
-# for _ in sys.argv[1:]:
-#     settings.update(json.loads(_))
-# if (str(settings.get('interface_2')) != "virtual"):
-#     pi = pigpio.pi()
+for _ in sys.argv[1:]:
+    settings.update(json.loads(_))
+
 
 class Source():
 
@@ -40,6 +43,7 @@ class Source():
 
     def __init__(self,  name: str = "source",
                         CANbus: Dict = {"interface": "virtual", "channel": "vcan0"},
+                        notifier_loop: asyncio.AbstractEventLoop = None,
                         support_EV_contactor_welding_detcection: bool = False,
                         available_output_voltage: int = 0,
                         available_output_current: int = 0,
@@ -71,17 +75,20 @@ class Source():
         self.canbus = can.Bus(  # type: ignore
         interface=str(CANbus.get('interface')), channel=str(CANbus.get('channel')), receive_own_messages=False)
 
-        self.reader = can.AsyncBufferedReader()
-
-        self.listeners: List[MessageRecipient] = [
-            self.reader,  # AsyncBufferedReader() listener
-            ]
-
         filters = [ {"can_id": 0x100, "can_mask": 0x7FF, "extended": False},
                     {"can_id": 0x101, "can_mask": 0x7FF, "extended": False},
                     {"can_id": 0x102, "can_mask": 0x7FF, "extended": False}]
-
         self.canbus.set_filters(filters)
+        
+        self.reader = can.AsyncBufferedReader()
+        self.listeners: List[can.notifier.MessageRecipient] = [
+            self.reader,
+            self.listener,
+            self.handle_message
+            ]
+
+        self.notifier_loop = notifier_loop
+        self.can_notifier = can.Notifier(self.canbus, self.listeners, loop=self.notifier_loop)
 
     def calculate_threshold_voltage(self, max_voltage, available_output_voltage):
         return min(max_voltage, available_output_voltage)
@@ -290,6 +297,7 @@ class Consumer:
 
     def __init__(self,  name: str = "consumer",
                         CANbus: Dict = {"interface": "virtual", "channel": "vcan0"},
+                        notifier_loop: asyncio.AbstractEventLoop = None,
                         max_battery_voltage: int = 300,
                         charge_rate_ref_const: int = 0,
                         max_charging_time: int = 0,
@@ -333,16 +341,19 @@ class Consumer:
         self.canbus = can.Bus(  # type: ignore
         interface=str(CANbus.get('interface')), channel=str(CANbus.get('channel')), receive_own_messages=False)
         
-        self.reader = can.AsyncBufferedReader()
-
-        self.listeners: List[MessageRecipient] = [
-            self.reader,  # AsyncBufferedReader() listener
-            ]
-
         filters = [ {"can_id": 0x108, "can_mask": 0x7FF, "extended": False},
                     {"can_id": 0x109, "can_mask": 0x7FF, "extended": False}]
-
         self.canbus.set_filters(filters)
+        
+        self.reader = can.AsyncBufferedReader()
+        self.listeners: List[can.notifier.MessageRecipient] = [
+            self.reader,
+            self.listener,
+            self.handle_message
+            ]
+
+        self.notifier_loop = notifier_loop
+        self.can_notifier = can.Notifier(self.canbus, self.listeners, loop=self.notifier_loop)
 
     def get_bat_voltage(self):
         return self.target_voltage
@@ -539,27 +550,26 @@ class Consumer:
         self.logger.debug(msg)
 
 async def main() -> None:
-    # charger = Source(name = "CH", available_output_current=settings.get("CH_available_output_current"))
-    # charger.listeners.append(charger.listener) 
-    # charger.listeners.append(charger.handle_message)
-    ev = Consumer(name = "EV",  max_battery_voltage=settings.get("EV_max_battery_voltage"),
+    loop=asyncio.get_running_loop()
+    charger = Source(name = "CH",   notifier_loop=loop,
+                                    available_output_current=settings.get("CH_available_output_current"))
+    ev = Consumer(name = "EV",  notifier_loop=loop,
+                                max_battery_voltage=settings.get("EV_max_battery_voltage"),
                                 max_battery_current=settings.get("EV_max_battery_current"),
                                 voltage=settings.get("EV_battery_voltage"),
                                 battery_total_capacity=settings.get("EV_battery_total_capacity"))
-    ev.listeners.append(ev.listener) 
-    ev.listeners.append(ev.handle_message)
     logging.info("Started!")
     # Create Notifier with an explicit loop to use for scheduling of callbacks
-    loop=asyncio.get_running_loop()
+    
     # notifier_charger = can.Notifier(charger.canbus, charger.listeners, loop=loop)
-    notifier_ev = can.Notifier(ev.canbus, ev.listeners, loop=loop)
+    # notifier_ev = can.Notifier(ev.canbus, ev.listeners, loop=loop)
 
-    # await asyncio.gather(charger.scheduler(), ev.scheduler())
-    await asyncio.gather(ev.scheduler())
+    await asyncio.gather(charger.scheduler(), ev.scheduler())
+    # await asyncio.gather(ev.scheduler())
 
     # Clean-up
-    # notifier_charger.stop()
-    notifier_ev.stop()
+    charger.can_notifier.stop()
+    ev.can_notifier.stop()
 
 def shutdown():
     print("Call shutdown func")
