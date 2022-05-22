@@ -7,13 +7,11 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 import logging
 import can
 import asyncio
-from typing import List
-from chademo.datatypes import *
-from chademo.enums import *
-
 import json
 import tracemalloc
-from typing import Dict
+from typing import List, Dict
+from chademo.datatypes import *
+from chademo.enums import *
 from abc import abstractmethod
 
 class LogColorsAndFormats:
@@ -86,7 +84,7 @@ class Source():
             self.listener,
             self.handle_message
             ]
-
+        # Create Notifier with an explicit loop to use for scheduling of callbacks
         self.notifier_loop = notifier_loop
         self.can_notifier = can.Notifier(self.canbus, self.listeners, loop=self.notifier_loop)
 
@@ -158,7 +156,7 @@ class Source():
                 self.logger.debug("pass max voltage")
                 compatibility["max_voltage"] = True
 
-                # todo add checking this paraameter
+                # todo add checking this parameter
                 self.logger.debug("Charged rate reference constant %d", msg.data[6])
             # handle message with id 101
             if msg.arbitration_id == 0x101:
@@ -181,11 +179,9 @@ class Source():
                 else:
                     self.logger.debug("pass protocol version")
                     compatibility["protocol_number"] = True
-                
+                # TODO fix infinite loop if not true threshold_voltage pass
                 self.logger.debug(LogColorsAndFormats.yellow + "Target battery voltage %d" + LogColorsAndFormats.end, msg.data[1] | msg.data[2]<<8)
-                if(compatibility["max_voltage"] == True):
-                    continue
-                if(compatibility["threshold_voltage"] == False):
+                if((compatibility["target_bat_voltage"] == True) or (compatibility["threshold_voltage"] == False)):
                     continue
                 if ( (msg.data[1] | msg.data[2]<<8) >= self.threshold_voltage ):
                     self.logger.warning("EV battery target voltage more then available")
@@ -344,7 +340,7 @@ class Consumer:
         filters = [ {"can_id": 0x108, "can_mask": 0x7FF, "extended": False},
                     {"can_id": 0x109, "can_mask": 0x7FF, "extended": False}]
         self.canbus.set_filters(filters)
-        
+        # Create Notifier with an explicit loop to use for scheduling of callbacks
         self.reader = can.AsyncBufferedReader()
         self.listeners: List[can.notifier.MessageRecipient] = [
             self.reader,
@@ -355,6 +351,14 @@ class Consumer:
         self.notifier_loop = notifier_loop
         self.can_notifier = can.Notifier(self.canbus, self.listeners, loop=self.notifier_loop)
 
+    @abstractmethod
+    def GPIO_init(self):
+        raise NotImplementedError
+    
+    @abstractmethod
+    async def wait_F_signal(self):
+        raise NotImplementedError
+    
     def get_bat_voltage(self):
         return self.target_voltage
 
@@ -379,9 +383,8 @@ class Consumer:
         self.state = StateType.standby
 
     async def standby(self):
-        # detect "f" signal ("Charge sequence signal 1") in loop
+        await self.wait_F_signal()
         self.logger.debug("detecting the F signal")
-        # TODO add loop here
 
         self.canbus.send(can.Message(   arbitration_id=0x102, 
                                         dlc=8,
@@ -553,17 +556,13 @@ async def main() -> None:
     loop=asyncio.get_running_loop()
     charger = Source(name = "CH",   notifier_loop=loop,
                                     available_output_current=settings.get("CH_available_output_current"))
+                                    
     ev = Consumer(name = "EV",  notifier_loop=loop,
                                 max_battery_voltage=settings.get("EV_max_battery_voltage"),
                                 max_battery_current=settings.get("EV_max_battery_current"),
                                 voltage=settings.get("EV_battery_voltage"),
                                 battery_total_capacity=settings.get("EV_battery_total_capacity"))
     logging.info("Started!")
-    # Create Notifier with an explicit loop to use for scheduling of callbacks
-    
-    # notifier_charger = can.Notifier(charger.canbus, charger.listeners, loop=loop)
-    # notifier_ev = can.Notifier(ev.canbus, ev.listeners, loop=loop)
-
     await asyncio.gather(charger.scheduler(), ev.scheduler())
     # await asyncio.gather(ev.scheduler())
 

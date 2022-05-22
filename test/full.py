@@ -7,7 +7,7 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 import logging
 import asyncio
 from typing import List
-from chademo import protocol
+from chademo.protocol import *
 
 import json
 import tracemalloc
@@ -35,27 +35,16 @@ for _ in sys.argv[1:]:
     settings.update(json.loads(_))
 
 async def main() -> None:
-    # charger = Source(name = "CH", available_output_current=settings.get("CH_available_output_current"))
-    # charger.listeners.append(charger.listener) 
-    # charger.listeners.append(charger.handle_message)
-    ev = protocol.Consumer(name = "EV",  max_battery_voltage=settings.get("EV_max_battery_voltage"),
-                                max_battery_current=settings.get("EV_max_battery_current"),
-                                voltage=settings.get("EV_battery_voltage"),
-                                battery_total_capacity=settings.get("EV_battery_total_capacity"))
-    ev.listeners.append(ev.listener) 
-    ev.listeners.append(ev.handle_message)
-    logging.info("Started!")
-    # Create Notifier with an explicit loop to use for scheduling of callbacks
     loop=asyncio.get_running_loop()
-    # notifier_charger = can.Notifier(charger.canbus, charger.listeners, loop=loop)
-    notifier_ev = can.Notifier(ev.canbus, ev.listeners, loop=loop)
+    charger = Source(name = "CH", notifier_loop=loop, available_output_current=settings.get("CH_available_output_current"))
+    ev = Consumer(name = "EV",     notifier_loop=loop,
+                                            max_battery_voltage=settings.get("EV_max_battery_voltage"),
+                                            max_battery_current=settings.get("EV_max_battery_current"),
+                                            voltage=settings.get("EV_battery_voltage"),
+                                            battery_total_capacity=settings.get("EV_battery_total_capacity"))
+    logging.info("Started!")
 
-    # await asyncio.gather(charger.scheduler(), ev.scheduler())
-    await asyncio.gather(ev.scheduler())
-
-    # Clean-up
-    # notifier_charger.stop()
-    notifier_ev.stop()
+    await asyncio.gather(charger.scheduler(), ev.scheduler())
 
 def shutdown():
     print("Call shutdown func")
