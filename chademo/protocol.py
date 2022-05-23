@@ -356,7 +356,8 @@ class Consumer:
         raise NotImplementedError
     
     @abstractmethod
-    async def wait_F_signal(self):
+    def wait_F_signal(self):
+        self.logger.debug("Detecting the F signal (Charge sequence signal 1)")
         raise NotImplementedError
     
     def get_bat_voltage(self):
@@ -383,9 +384,9 @@ class Consumer:
         self.state = StateType.standby
 
     async def standby(self):
-        await self.wait_F_signal()
-        self.logger.debug("detecting the F signal")
-
+        while(self.wait_F_signal()):
+            await asyncio.sleep(1)
+        
         self.canbus.send(can.Message(   arbitration_id=0x102, 
                                         dlc=8,
                                         data=[  self.protocol_number.value,
@@ -487,7 +488,7 @@ class Consumer:
         self.state = StateType.precharge
 
     async def precharge(self):
-        # turn ON switch "k"
+        # turn ON switch "k" (Vehicle charge permission signal)
         # detect "g" signal ("Charge sequence signal 2") in loop
         self.state = StateType.charging
         await asyncio.sleep(0.3)
