@@ -1,8 +1,4 @@
-__pycache__/datatypes.cpython-39.pyc
-__pycache__/enums.cpython-39.pyc
 .vscode/launch.json
-__pycache__/chademo.cpython-39.pyc
-test/__pycache__/gpio.cpython-39.pyc
-chademo/__pycache__/protocol.cpython-39.pyc
-chademo/__pycache__/protocol.cpython-39.pyc
-chademo/__pycache__/protocol.cpython-39.pyc
+__pycache__/
+test/__pycache__/
+chademo/__pycache__/
