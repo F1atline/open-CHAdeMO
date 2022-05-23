@@ -31,8 +31,8 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(name)-10s %(level
 
 settings = {}
 
-for _ in sys.argv[1:]:
-    settings.update(json.loads(_))
+# for _ in sys.argv[1:]:
+#     settings.update(json.loads(_))
 
 
 class Source():
