@@ -1,5 +1,6 @@
 import sys
 import os
+import json
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
@@ -10,10 +11,14 @@ from chademo.protocol import *
 
 settings = {}
 
-for _ in sys.argv[1:]:
-    settings.update(json.loads(_))
+if sys.platform == 'win32':
+    for _ in sys.argv[1:]:
+        settings.update(json.loads(_))
+else:
+    for _ in sys.argv[1:]:
+        settings.update(json.loads(_.replace("\\\"", "\"")))
 
-def wait_F_signal(self):
+def wait_F_signal():
     print("Detecting the F signal (Charge sequence signal 1)")
 
 class EV(Consumer, GPIO):
@@ -80,7 +85,7 @@ class EV(Consumer, GPIO):
                             callback_sequence_2,
                             callback_proximity)
 
-    def wait_F_signal(self):
+    async def wait_F_signal(self, gpio, level, tick):
         self.logger.debug("Detecting the F signal (Charge sequence signal 1)")
         return self.read(self.sequence_1)
 
@@ -103,7 +108,7 @@ async def main() -> None:
                                 callback_sequence_1 = None,
                                 callback_sequence_2 = None,
                                 callback_proximity = None)
-    ev.add_callback(ev.sequence_1, pigpio.EITHER_EDGE, ev.wait_F_signal)
+    ev.add_callback(ev.sequence_1, pigpio.EITHER_EDGE, ev.sequence_1_event.set)
 
     await asyncio.gather(ev.scheduler())
 

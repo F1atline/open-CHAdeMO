@@ -36,7 +36,7 @@ class GPIO(pigpio.pi):
             self.init_pin(pin=permission, pin_direction=pigpio.OUTPUT)
             self.init_pin(pin=false_drive_preventing, pin_direction=pigpio.OUTPUT)
 
-    def init_pin(self, pin: int, pin_direction: int, pull_up_resistor: int, callback = None, edge: int = None, noise_ready: int = 1000, noise_active: int = 5000) -> Any:
+    def init_pin(self, pin: int, pin_direction: int, pull_up_resistor: int = None, callback = None, edge: int = None, noise_ready: int = 1000, noise_active: int = 5000) -> Any:
         self.set_mode(pin, pin_direction)
         if pin_direction == pigpio.INPUT:
             self.set_pull_up_down(pin, pull_up_resistor)

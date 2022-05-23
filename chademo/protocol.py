@@ -351,6 +351,8 @@ class Consumer:
         self.notifier_loop = notifier_loop
         self.can_notifier = can.Notifier(self.canbus, self.listeners, loop=self.notifier_loop)
 
+        self.sequence_1_event = asyncio.Event()
+
     @abstractmethod
     def GPIO_init(self):
         raise NotImplementedError
@@ -384,9 +386,9 @@ class Consumer:
         self.state = StateType.standby
 
     async def standby(self):
-        while(self.wait_F_signal()):
-            await asyncio.sleep(1)
         
+        await self.sequence_1_event.wait()
+
         self.canbus.send(can.Message(   arbitration_id=0x102, 
                                         dlc=8,
                                         data=[  self.protocol_number.value,
