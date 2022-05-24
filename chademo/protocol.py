@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
@@ -537,8 +538,13 @@ class Consumer:
         # calculate current
         self.set_main_relay(True)
 
-        # send current request or go to finish
-        await asyncio.sleep(0.3)
+        charge_period = time.time() + self.estimated_charging_time # FIXME add calculation estimation charge time
+        while time.time() > charge_period:
+            # calculate current
+            await asyncio.sleep(0.1)
+
+        # TODO calculate current
+        # TODO send current request or go to finish
 
     async def finish(self):
         # Check that DC current is less than 5A

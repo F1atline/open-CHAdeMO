@@ -126,8 +126,8 @@ async def main() -> None:
                                 max_battery_voltage=settings.get("EV_max_battery_voltage"),
                                 max_battery_current=settings.get("EV_max_battery_current"),
                                 voltage=settings.get("EV_battery_voltage"),
+                                estimated_charging_time=settings.get("EV_charging_period"),
                                 battery_total_capacity=settings.get("EV_battery_total_capacity"),
-
                                 sequence_1=settings.get("EVGPIO_charge_seq_1"),
                                 sequence_2=settings.get("EVGPIO_charge_seq_2"),
                                 permission=settings.get("EVGPIO_charge_permission"),
