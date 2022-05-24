@@ -350,16 +350,46 @@ class Consumer:
 
         self.notifier_loop = notifier_loop
         self.can_notifier = can.Notifier(self.canbus, self.listeners, loop=self.notifier_loop)
-
+        # add events
+        self.proximity_event = Event_thread_safe()
         self.sequence_1_event = Event_thread_safe()
+        self.sequence_2_event = Event_thread_safe()
 
     @abstractmethod
     def GPIO_init(self):
         raise NotImplementedError
     
     @abstractmethod
-    def wait_F_signal(self):
-        self.logger.debug("Detecting the F signal (Charge sequence signal 1)")
+    def proximity_detection(self):
+        self.logger.debug("Detected the proximity signal")
+        raise NotImplementedError
+
+    @abstractmethod
+    def sequence_1_detection(self):
+        self.logger.debug("Detected the F signal (Charge sequence signal 1)")
+        raise NotImplementedError
+
+    @abstractmethod
+    def sequence_2_detection(self):
+        self.logger.debug("Detected the G signal (Charge sequence signal 2)")
+        raise NotImplementedError
+
+    @abstractmethod
+    def set_false_drive_preventing(self, state: bool = False):
+        self.logger.debug("Set false drive preventing %r", state)
+        raise NotImplementedError
+
+    @abstractmethod
+    def set_charge_permission(self, state: bool = False):
+        self.logger.debug("Set charge permission %r", state)
+        raise NotImplementedError
+
+    @abstractmethod
+    def set_main_relay(self, state: bool = False):
+        if state == True:
+            self.logger.debug("Set main relay CLOSE")
+        else:
+            self.logger.debug("Set main relay OPEN")
         raise NotImplementedError
     
     def get_bat_voltage(self):
@@ -386,8 +416,16 @@ class Consumer:
         self.state = StateType.standby
 
     async def standby(self):
-        self.logger.debug("Wait F signal")
+        self.set_false_drive_preventing(True)
+        self.logger.debug("Wait plugin the socket (Proximity signal)")
+        await self.proximity_event.wait()
+
+        self.logger.debug("Wait the F signal (Charge sequence signal 1)")
         await self.sequence_1_event.wait()
+        self.state = StateType.precharge
+
+
+    async def precharge(self):
 
         self.canbus.send(can.Message(   arbitration_id=0x102, 
                                         dlc=8,
@@ -487,23 +525,24 @@ class Consumer:
                     self.logger.debug("Maximum charging time (by seconds) %d", msg.data[6]*10)
                 self.logger.debug("Remaining charging time (by by minute) %d", msg.data[7])
 
-        self.state = StateType.precharge
-
-    async def precharge(self):
-        # turn ON switch "k" (Vehicle charge permission signal)
-        # detect "g" signal ("Charge sequence signal 2") in loop
+        self.set_charge_permission(True)
+        await self.sequence_2_event.wait()
         self.state = StateType.charging
-        await asyncio.sleep(0.3)
 
     async def charging(self):
+        # while True:
+        #     await asyncio.sleep(1)
+        #     continue
         # check erorrs
         # calculate current
+        self.set_main_relay(True)
+
         # send current request or go to finish
         await asyncio.sleep(0.3)
 
     async def finish(self):
         # Check that DC current is less than 5A
-        # Open EV main relay 'c
+        self.set_main_relay(True)
         # Terminate CAN communication
         await asyncio.sleep(0.3)
 

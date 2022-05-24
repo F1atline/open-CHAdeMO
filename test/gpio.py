@@ -24,6 +24,7 @@ class GPIO(pigpio.pi):
         self.permission = permission
         self.main_relay = main_relay
         self.proximity = proximity
+        self.false_drive_preventing = false_drive_preventing
 
         if not self.connected:  # Check connection
             logger.error("Not connected to PIGPIO Daemon")

@@ -86,13 +86,38 @@ class EV(Consumer, GPIO):
                             callback_sequence_2,
                             callback_proximity)
 
-    def wait_F_signal(self, gpio, level, tick):
+    def proximity_detection(self, gpio, level, tick):
         self.logger.debug("%d %d %d", gpio, level, tick)
-        self.logger.debug("Detecting the F signal (Charge sequence signal 1)")
+        self.logger.debug("Detected the proximity signal")
+        self.proximity_event.set()
+        self.cb_prox.cancel()
+
+    def sequence_1_detection(self, gpio, level, tick):
+        self.logger.debug("%d %d %d", gpio, level, tick)
+        self.logger.debug("Detected the F signal (Charge sequence signal 1)")
         self.sequence_1_event.set()
         self.cb_seq_1.cancel()
 
+    def sequence_2_detection(self, gpio, level, tick):
+        self.logger.debug("%d %d %d", gpio, level, tick)
+        self.logger.debug("Detected the G signal (Charge sequence signal 2)")
+        self.sequence_2_event.set()
+        self.cb_seq_2.cancel()
 
+    def set_false_drive_preventing(self, state: bool = False):
+        self.write(self.false_drive_preventing, state)
+        self.logger.debug("Set false drive preventing %r", state)
+
+    def set_charge_permission(self, state: bool = False):
+        self.write(self.permission, state)
+        self.logger.debug("Set charge permission %r", state)
+
+    def set_main_relay(self, state: bool = False):
+        if state == True:
+            self.logger.debug("Set main relay CLOSE")
+        else:
+            self.logger.debug("Set main relay OPEN")
+        self.write(self.main_relay, state)
 
 
 async def main() -> None:
@@ -112,7 +137,9 @@ async def main() -> None:
                                 callback_sequence_1 = None,
                                 callback_sequence_2 = None,
                                 callback_proximity = None)
-    ev.cb_seq_1 = ev.callback(ev.sequence_1, pigpio.RISING_EDGE, func=ev.wait_F_signal)
+    ev.cb_prox = ev.callback(ev.proximity, pigpio.RISING_EDGE, func=ev.proximity_detection)
+    ev.cb_seq_1 = ev.callback(ev.sequence_1, pigpio.RISING_EDGE, func=ev.sequence_1_detection)
+    ev.cb_seq_2 = ev.callback(ev.sequence_2, pigpio.RISING_EDGE, func=ev.sequence_2_detection)
 
     await asyncio.gather(ev.scheduler())
 
