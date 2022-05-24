@@ -59,6 +59,7 @@ class EV(Consumer, GPIO):
                         callback_sequence_1 = None,
                         callback_sequence_2 = None,
                         callback_proximity = None):
+
         Consumer.__init__(self, name=name,
                                 CANbus=CANbus,
                                 notifier_loop=notifier_loop,
@@ -85,8 +86,9 @@ class EV(Consumer, GPIO):
                             callback_sequence_2,
                             callback_proximity)
 
-    async def wait_F_signal(self, gpio, level, tick):
+    def wait_F_signal(self, gpio, level, tick):
         self.logger.debug("Detecting the F signal (Charge sequence signal 1)")
+        self.sequence_1_event.set()
         return self.read(self.sequence_1)
 
 
@@ -108,7 +110,8 @@ async def main() -> None:
                                 callback_sequence_1 = None,
                                 callback_sequence_2 = None,
                                 callback_proximity = None)
-    ev.add_callback(ev.sequence_1, pigpio.EITHER_EDGE, ev.sequence_1_event.set)
+    # ev.add_callback(ev.sequence_1, pigpio.EITHER_EDGE, ev.sequence_1_event.set)
+    ev.cb_seq_1 = ev.init_pin(pin=ev.sequence_1, pin_direction=pigpio.INPUT, pull_up_resistor=pigpio.PUD_OFF, callback=ev.wait_F_signal, edge=pigpio.EITHER_EDGE)
 
     await asyncio.gather(ev.scheduler())
 

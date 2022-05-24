@@ -29,7 +29,7 @@ class GPIO(pigpio.pi):
             logger.error("Not connected to PIGPIO Daemon")
             sys.exit(1)
         else:
-            self.cb_seq_1 = self.init_pin(pin=sequence_1, pin_direction=pigpio.INPUT, pull_up_resistor=pigpio.PUD_OFF, callback=callback_sequence_1, edge=pigpio.EITHER_EDGE)
+            # self.cb_seq_1 = self.init_pin(pin=sequence_1, pin_direction=pigpio.INPUT, pull_up_resistor=pigpio.PUD_OFF, callback=callback_sequence_1, edge=pigpio.EITHER_EDGE)
             self.cb_seq_2 = self.init_pin(pin=sequence_2, pin_direction=pigpio.INPUT, pull_up_resistor=pigpio.PUD_OFF, callback=callback_sequence_2, edge=pigpio.EITHER_EDGE)
             self.cb_prox = self.init_pin(pin=proximity, pin_direction=pigpio.INPUT, pull_up_resistor=pigpio.PUD_OFF, callback=callback_proximity, edge=pigpio.EITHER_EDGE)
             self.init_pin(pin=main_relay, pin_direction=pigpio.OUTPUT)
