@@ -29,11 +29,11 @@ tracemalloc.start()
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(name)-10s %(levelname)8s: %(message)s')
 
-settings = {}
-
-# for _ in sys.argv[1:]:
-#     settings.update(json.loads(_))
-
+class Event_thread_safe(asyncio.Event):
+    #TODO: clear() method
+    def set(self):
+        #FIXME: The _loop attribute is not documented as public api!
+        self._loop.call_soon_threadsafe(super().set)
 
 class Source():
 
@@ -179,7 +179,7 @@ class Source():
                 else:
                     self.logger.debug("pass protocol version")
                     compatibility["protocol_number"] = True
-                # TODO fix infinite loop if not true threshold_voltage pass
+                # FIXME infinite loop if not true threshold_voltage pass
                 self.logger.debug(LogColorsAndFormats.yellow + "Target battery voltage %d" + LogColorsAndFormats.end, msg.data[1] | msg.data[2]<<8)
                 if((compatibility["target_bat_voltage"] == True) or (compatibility["threshold_voltage"] == False)):
                     continue
@@ -351,7 +351,7 @@ class Consumer:
         self.notifier_loop = notifier_loop
         self.can_notifier = can.Notifier(self.canbus, self.listeners, loop=self.notifier_loop)
 
-        self.sequence_1_event = asyncio.Event()
+        self.sequence_1_event = Event_thread_safe()
 
     @abstractmethod
     def GPIO_init(self):
@@ -386,7 +386,7 @@ class Consumer:
         self.state = StateType.standby
 
     async def standby(self):
-        
+        self.logger.debug("Wait F signal")
         await self.sequence_1_event.wait()
 
         self.canbus.send(can.Message(   arbitration_id=0x102, 
