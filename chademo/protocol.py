@@ -424,10 +424,10 @@ class Consumer:
         self.logger.debug("Wait the F signal (Charge sequence signal 1)")
         await self.sequence_1_event.wait()
         self.state = StateType.precharge
-
+        
 
     async def precharge(self):
-
+        self.status.vehicle_charging_enabled = ChargingStatusType.enabled
         self.canbus.send(can.Message(   arbitration_id=0x102, 
                                         dlc=8,
                                         data=[  self.protocol_number.value,
@@ -536,21 +536,81 @@ class Consumer:
         #     continue
         # check erorrs
         # calculate current
+
+        # TODO add current req calculation
+
+        self.status.vehicle_status = EVContactorType.close
+        self.current_req = 10
+        self.canbus.send(can.Message(   arbitration_id=0x102, 
+                                dlc=8,
+                                data=[  self.protocol_number.value,
+                                        self.get_bat_voltage() & 0xFF,
+                                        (self.get_bat_voltage() & 0xFF00) >> 8,
+                                        self.current_req,
+                                        self.get_fault_flag(),
+                                        self.get_status_flag(),
+                                        self.charged_rate,
+                                        0x0 ], 
+                                is_extended_id=False))
+
         self.set_main_relay(True)
 
         charge_period = time.time() + self.estimated_charging_time # FIXME add calculation estimation charge time
         while time.time() > charge_period:
-            # calculate current
+            # TODO calculate current
+            self.canbus.send(can.Message(   arbitration_id=0x102, 
+                        dlc=8,
+                        data=[  self.protocol_number.value,
+                                self.get_bat_voltage() & 0xFF,
+                                (self.get_bat_voltage() & 0xFF00) >> 8,
+                                self.current_req,
+                                self.get_fault_flag(),
+                                self.get_status_flag(),
+                                self.charged_rate,
+                                0x0 ], 
+                        is_extended_id=False))
             await asyncio.sleep(0.1)
 
-        # TODO calculate current
+        self.state = StateType.finish
         # TODO send current request or go to finish
 
     async def finish(self):
+        self.status.vehicle_charging_enabled = ChargingStatusType.disabled
+        self.canbus.send(can.Message(   arbitration_id=0x102, 
+            dlc=8,
+            data=[  self.protocol_number.value,
+                    self.get_bat_voltage() & 0xFF,
+                    (self.get_bat_voltage() & 0xFF00) >> 8,
+                    0x0,
+                    self.get_fault_flag(),
+                    self.get_status_flag(),
+                    self.charged_rate,
+                    0x0 ], 
+            is_extended_id=False))
+        await asyncio.sleep(1)
         # Check that DC current is less than 5A
-        self.set_main_relay(True)
+        self.set_main_relay(False)
         # Terminate CAN communication
-        await asyncio.sleep(0.3)
+        self.status.vehicle_status = EVContactorType.open
+
+        self.canbus.send(can.Message(   arbitration_id=0x102, 
+            dlc=8,
+            data=[  self.protocol_number.value,
+                    self.get_bat_voltage() & 0xFF,
+                    (self.get_bat_voltage() & 0xFF00) >> 8,
+                    0x0,
+                    self.get_fault_flag(),
+                    self.get_status_flag(),
+                    self.charged_rate,
+                    0x0 ], 
+            is_extended_id=False))
+
+        # await asyncio.sleep(0.3)
+        # self.state = StateType.off
+
+        while True:
+            await asyncio.sleep(1)
+            continue
 
     async def scheduler(self) -> None:
         while True:
