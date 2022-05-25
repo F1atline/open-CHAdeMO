@@ -4,9 +4,9 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "shutdown_debug",
+            "label": "stop test charger",
             "type": "shell",
-            "command": ".\\shutdown.py"
+            "command": "source ./venv/bin/activate; python ./test/stop_test.py"
         }
     ]
 }

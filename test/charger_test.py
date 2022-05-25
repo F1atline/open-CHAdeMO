@@ -18,9 +18,6 @@ else:
     for _ in sys.argv[1:]:
         settings.update(json.loads(_.replace("\\\"", "\"")))
 
-def wait_F_signal():
-    print("Detecting the F signal (Charge sequence signal 1)")
-
 class EV(Consumer, GPIO):
 
     def __init__(self,  # Consumer arguments
@@ -148,9 +145,10 @@ def shutdown():
 
 if __name__ == '__main__':
     try:
+        logging.debug("\033[93mStart test\033[0m")
         asyncio.run(main())
     except KeyboardInterrupt:
     # except KeyboardInterrupt:
         shutdown()
-        logging.warning("Finish test")
+        logging.warning("\033[93mFinish test\033[0m")
         sys.exit(1)
