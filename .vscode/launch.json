@@ -13,16 +13,19 @@
             "justMyCode": true,
             "postDebugTask": "stop test charger",
             "args": [
-                "{\\\"interface_1\\\":\\\"virtual\\\"}",
-                "{\\\"channel_1\\\":\\\"vcan0\\\"}",
-                "{\\\"interface_2\\\":\\\"virtual\\\"}",
-                "{\\\"channel_2\\\":\\\"vcan0\\\"}",
                 "{\\\"PN\\\":1}",
                 // CHARGER settings
+                // CAN BUS
+                "{\\\"interface_1\\\":\\\"virtual\\\"}",
+                "{\\\"channel_1\\\":\\\"vcan0\\\"}",
+                // electrical
                 "{\\\"CH_available_output_current\\\":125}",
                 "{\\\"CH_available_output_voltage\\\":125}",
                 "{\\\"CH_available_output_voltage\\\":125}",
                 // EV settings
+                // CAN BUS
+                "{\\\"interface_2\\\":\\\"virtual\\\"}",
+                "{\\\"channel_2\\\":\\\"vcan0\\\"}",
                 // electrical
                 "{\\\"EV_battery_voltage\\\":200}",
                 "{\\\"EV_max_battery_voltage\\\":300}",

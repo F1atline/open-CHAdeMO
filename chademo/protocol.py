@@ -526,9 +526,13 @@ class Consumer:
                     self.logger.debug("Maximum charging time (by seconds) %d", msg.data[6]*10)
                 self.logger.debug("Remaining charging time (by by minute) %d", msg.data[7])
 
+        while True:
+            continue
+
         self.set_charge_permission(True)
         await self.sequence_2_event.wait()
-        self.state = StateType.charging
+        # self.state = StateType.charging
+
 
     async def charging(self):
         # while True:

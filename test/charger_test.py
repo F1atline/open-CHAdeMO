@@ -120,6 +120,7 @@ class EV(Consumer, GPIO):
 async def main() -> None:
     loop=asyncio.get_running_loop()
     ev = EV(name = "EV",  notifier_loop=loop,
+                                CANbus={ _:settings[_] for _ in ["interface", "channel"] }
                                 max_battery_voltage=settings.get("EV_max_battery_voltage"),
                                 max_battery_current=settings.get("EV_max_battery_current"),
                                 voltage=settings.get("EV_battery_voltage"),
