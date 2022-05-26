@@ -1,0 +1,43 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Charger test",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/test/charger_test.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "postDebugTask": "stop test charger",
+            "args": [
+                "{\\\"interface_1\\\":\\\"virtual\\\"}",
+                "{\\\"channel_1\\\":\\\"vcan0\\\"}",
+                "{\\\"interface_2\\\":\\\"virtual\\\"}",
+                "{\\\"channel_2\\\":\\\"vcan0\\\"}",
+                "{\\\"PN\\\":1}",
+                // CHARGER settings
+                "{\\\"CH_available_output_current\\\":125}",
+                "{\\\"CH_available_output_voltage\\\":125}",
+                "{\\\"CH_available_output_voltage\\\":125}",
+                // EV settings
+                // electrical
+                "{\\\"EV_battery_voltage\\\":200}",
+                "{\\\"EV_max_battery_voltage\\\":300}",
+                "{\\\"EV_max_battery_current\\\":10}",
+                "{\\\"EV_battery_total_capacity\\\":40}",
+                // GPIO (use GPIO number - not socket pin number)
+                "{\\\"EVGPIO_charge_seq_1\\\":27}",
+                "{\\\"EVGPIO_charge_seq_2\\\":5}",
+                "{\\\"EVGPIO_charge_permission\\\":26}",
+                "{\\\"EVGPIO_proximity\\\":6}",
+                "{\\\"EVGPIO_PE_fault\\\":16}",
+                "{\\\"EVGPIO_main_relay\\\":17}",
+                // Charging time in minutes
+                "{\\\"EV_charging_period\\\":1}"
+            ]
+        }
+    ]
+}
