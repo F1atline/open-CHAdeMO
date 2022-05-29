@@ -22,7 +22,7 @@ class EV(Consumer, GPIO):
 
     def __init__(self,  # Consumer arguments
                         name: str = "consumer",
-                        CANbus: Dict = {"interface": "virtual", "channel": "vcan0"},
+                        CANbus: Dict = {"EV_can_interface": "virtual", "EV_can_channel": "vcan0"},
                         notifier_loop: asyncio.AbstractEventLoop = None,
                         max_battery_voltage: int = 300,
                         charge_rate_ref_const: int = 0,
@@ -88,12 +88,14 @@ class EV(Consumer, GPIO):
         self.logger.debug("Detected the proximity signal")
         self.proximity_event.set()
         self.cb_prox.cancel()
+        self.cb_seq_1 = self.callback(self.sequence_1, pigpio.FALLING_EDGE, func=self.sequence_1_detection)
 
     def sequence_1_detection(self, gpio, level, tick):
         self.logger.debug("%d %d %d", gpio, level, tick)
         self.logger.debug("Detected the F signal (Charge sequence signal 1)")
         self.sequence_1_event.set()
         self.cb_seq_1.cancel()
+        self.cb_seq_2 = self.callback(self.sequence_2, pigpio.FALLING_EDGE, func=self.sequence_2_detection)
 
     def sequence_2_detection(self, gpio, level, tick):
         self.logger.debug("%d %d %d", gpio, level, tick)
@@ -120,7 +122,7 @@ class EV(Consumer, GPIO):
 async def main() -> None:
     loop=asyncio.get_running_loop()
     ev = EV(name = "EV",  notifier_loop=loop,
-                                CANbus={ _:settings[_] for _ in ["interface", "channel"] }
+                                CANbus={ _:settings[_] for _ in ["EV_can_interface", "EV_can_channel"] },
                                 max_battery_voltage=settings.get("EV_max_battery_voltage"),
                                 max_battery_current=settings.get("EV_max_battery_current"),
                                 voltage=settings.get("EV_battery_voltage"),
@@ -135,9 +137,18 @@ async def main() -> None:
                                 callback_sequence_1 = None,
                                 callback_sequence_2 = None,
                                 callback_proximity = None)
-    ev.cb_prox = ev.callback(ev.proximity, pigpio.RISING_EDGE, func=ev.proximity_detection)
-    ev.cb_seq_1 = ev.callback(ev.sequence_1, pigpio.RISING_EDGE, func=ev.sequence_1_detection)
-    ev.cb_seq_2 = ev.callback(ev.sequence_2, pigpio.RISING_EDGE, func=ev.sequence_2_detection)
+    ev.cb_prox = ev.callback(ev.proximity, pigpio.FALLING_EDGE, func=ev.proximity_detection)
+
+    ev.status.charging_system_fault = FaultType.normal
+    ev.status.vehicle_shift_position = ShiftPositionType.parking
+
+    ev.fault_flags = VehicleFaultFlagType(                    battery_overvoltage = FaultType.normal,
+                                                                                    battery_under_voltage = FaultType.normal,
+                                                                                    battery_current_deviation_error = FaultType.normal,
+                                                                                    high_battery_temperature = FaultType.normal,
+                                                                                    battery_voltage_deviation_error = FaultType.normal)
+
+    ev.charged_rate = 50
 
     await asyncio.gather(ev.scheduler())
 

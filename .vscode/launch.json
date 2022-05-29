@@ -16,20 +16,20 @@
                 "{\\\"PN\\\":1}",
                 // CHARGER settings
                 // CAN BUS
-                "{\\\"interface_1\\\":\\\"virtual\\\"}",
-                "{\\\"channel_1\\\":\\\"vcan0\\\"}",
+                "{\\\"CH_can_interface\\\":\\\"virtual\\\"}",
+                "{\\\"CH_can_channel\\\":\\\"vcan0\\\"}",
                 // electrical
                 "{\\\"CH_available_output_current\\\":125}",
                 "{\\\"CH_available_output_voltage\\\":125}",
                 "{\\\"CH_available_output_voltage\\\":125}",
                 // EV settings
                 // CAN BUS
-                "{\\\"interface_2\\\":\\\"virtual\\\"}",
-                "{\\\"channel_2\\\":\\\"vcan0\\\"}",
+                "{\\\"EV_can_interface\\\":\\\"socketcan\\\"}",
+                "{\\\"EV_can_channel\\\":\\\"can1\\\"}",
                 // electrical
-                "{\\\"EV_battery_voltage\\\":200}",
-                "{\\\"EV_max_battery_voltage\\\":300}",
-                "{\\\"EV_max_battery_current\\\":10}",
+                "{\\\"EV_battery_voltage\\\":400}",
+                "{\\\"EV_max_battery_voltage\\\":410}",
+                "{\\\"EV_max_battery_current\\\":30}",
                 "{\\\"EV_battery_total_capacity\\\":40}",
                 // GPIO (use GPIO number - not socket pin number)
                 "{\\\"EVGPIO_charge_seq_1\\\":27}",

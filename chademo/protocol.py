@@ -36,6 +36,18 @@ class Event_thread_safe(asyncio.Event):
         #FIXME: The _loop attribute is not documented as public api!
         self._loop.call_soon_threadsafe(super().set)
 
+class charger_status():
+    def __init__(self) -> None:
+        self.status =   ChargerStatusFaultFlagType = ChargerStatusFaultFlagType(    charger_status = ChargerStatusType.standby,
+                                                                                    charger_malfunction = FaultType.fault,
+                                                                                    сharging_connector_lock = ConnectorLockStatusType.open,
+                                                                                    battery_incompatibility = BatteryIncompatibilityType.incompatible,
+                                                                                    charging_system_malfunction = ChargingSystemMalfunctionType.malfunction,
+                                                                                    charging_stop_control = ChargingStopControlType.stopped
+                                                                                )
+
+
+
 class Source():
 
     # logger = logging.getLogger()
@@ -86,6 +98,7 @@ class Source():
             self.handle_message
             ]
         # Create Notifier with an explicit loop to use for scheduling of callbacks
+
         self.notifier_loop = notifier_loop
         self.can_notifier = can.Notifier(self.canbus, self.listeners, loop=self.notifier_loop)
 
@@ -335,9 +348,17 @@ class Consumer:
 
         self.state = StateType.off
 
+        self.charger_status: ChargerStatusFaultFlagType = ChargerStatusFaultFlagType(   charger_status = ChargerStatusType.standby,
+                                                                                        charger_malfunction = FaultType.fault,
+                                                                                        сharging_connector_lock = ConnectorLockStatusType.open,
+                                                                                        battery_incompatibility = BatteryIncompatibilityType.incompatible,
+                                                                                        charging_system_malfunction = ChargingSystemMalfunctionType.malfunction,
+                                                                                        charging_stop_control = ChargingStopControlType.stopped
+                                                                                    )
+
         self.canbus = can.Bus(  # type: ignore
-        interface=str(CANbus.get('interface')), channel=str(CANbus.get('channel')), receive_own_messages=False)
-        
+        interface=str(CANbus.get('EV_can_interface')), channel=str(CANbus.get('EV_can_channel')), receive_own_messages=False)
+        # TODO add universal keys for CAN
         filters = [ {"can_id": 0x108, "can_mask": 0x7FF, "extended": False},
                     {"can_id": 0x109, "can_mask": 0x7FF, "extended": False}]
         self.canbus.set_filters(filters)
@@ -348,7 +369,8 @@ class Consumer:
             self.listener,
             self.handle_message
             ]
-
+        
+        self.notify = False
         self.notifier_loop = notifier_loop
         self.can_notifier = can.Notifier(self.canbus, self.listeners, loop=self.notifier_loop)
         # add events
@@ -392,7 +414,20 @@ class Consumer:
         else:
             self.logger.debug("Set main relay OPEN")
         raise NotImplementedError
+
+    def raw_to_charger_status_type(self, data: int) -> ChargerStatusFaultFlagType:
+        ret = ChargerStatusFaultFlagType(     charger_status=ChargerStatusType(data&0b1),
+                                    charger_malfunction=FaultType((data&0b10)>>1),
+                                    сharging_connector_lock=ConnectorLockStatusType((data&0b100)>>2),
+                                    battery_incompatibility=BatteryIncompatibilityType((data&0b1000)>>3),
+                                    charging_system_malfunction=ChargingSystemMalfunctionType((data&0b10000)>>4),
+                                    charging_stop_control=ChargingStopControlType((data&0b100000)>>5)
+                                    )
+        self.logger.debug(ret)
+        return   ret
     
+    def get_curr(self):
+        return self.current_req
     def get_bat_voltage(self):
         return self.target_voltage
 
@@ -408,6 +443,45 @@ class Consumer:
 
         return self.battery_total_capacity/(current*self.get_bat_voltage()) * 1000
     
+    async def notify_charger(self):
+        while(self.notify):
+            self.canbus.send(can.Message(   arbitration_id=0x102, 
+                                            dlc=8,
+                                            data=[  self.protocol_number.value,
+                                                    self.get_bat_voltage() & 0xFF,
+                                                    (self.get_bat_voltage() & 0xFF00) >> 8,
+                                                    self.get_curr(),
+                                                    self.get_fault_flag(),
+                                                    self.get_status_flag(),
+                                                    self.charged_rate, 
+                                                    0x0 ], 
+                                            is_extended_id=False))
+
+            self.canbus.send(can.Message(   arbitration_id=0x101, 
+                                            dlc=8,
+                                            data=[  0,
+                                                    0xFF,
+                                                    2,
+                                                    2,
+                                                    0,
+                                                    (self.battery_total_capacity * 1000) & 0xFF,
+                                                    ((self.battery_total_capacity * 1000) & 0xFF00) >> 8,
+                                                    0x0 ], 
+                                            is_extended_id=False))
+
+            self.canbus.send(can.Message(   arbitration_id=0x100, 
+                                            dlc=8,
+                                            data=[  0x0,
+                                                    0x0,
+                                                    0x0,
+                                                    0x0,
+                                                    self.max_battery_voltage & 0xFF,
+                                                    (self.max_battery_voltage & 0xFF00) >> 8,
+                                                    self.charge_rate_ref_const,
+                                                    0x0 ],
+                                            is_extended_id=False))
+            await asyncio.sleep(0.1)
+        
     async def off(self):
         await asyncio.sleep(1)
         self.state = StateType.fault
@@ -433,10 +507,22 @@ class Consumer:
                                         data=[  self.protocol_number.value,
                                                 self.get_bat_voltage() & 0xFF,
                                                 (self.get_bat_voltage() & 0xFF00) >> 8,
-                                                self.current_req,
+                                                self.get_curr(),
                                                 self.get_fault_flag(),
                                                 self.get_status_flag(),
                                                 self.charged_rate, 
+                                                0x0 ], 
+                                        is_extended_id=False))
+
+        self.canbus.send(can.Message(   arbitration_id=0x101, 
+                                        dlc=8,
+                                        data=[  0,
+                                                0xFF,
+                                                2,
+                                                2,
+                                                0,
+                                                (self.battery_total_capacity * 1000) & 0xFF,
+                                                ((self.battery_total_capacity * 1000) & 0xFF00) >> 8,
                                                 0x0 ], 
                                         is_extended_id=False))
 
@@ -519,19 +605,23 @@ class Consumer:
                     
                 self.logger.debug("Present output voltage %d", msg.data[1] | msg.data[2]<<8)
                 self.logger.debug("Present charging current %d", msg.data[3])
-                self.logger.debug("Status / fault flag %d", msg.data[5])
+                self.logger.debug("Charger status / fault flag %d", msg.data[5])
+
+                self.charger_status = self.raw_to_charger_status_type(msg.data[5])
+
+                # self.logger.debug("Charger status / fault flag: %s %s %s %s %s %s", self.charger_status.charger_status.name, self.charger_status.charger_malfunction.name, self.charger_status.сharging_connector_lock.name,
+                #                                                                     self.charger_status.battery_incompatibility.name, self.charger_status.charging_system_malfunction.name, self.charger_status.charging_stop_control.name)
                 if msg.data[6] == 0xFF:
                     self.logger.debug("Maximum charging time (by seconds): usage by minute")
                 else:
                     self.logger.debug("Maximum charging time (by seconds) %d", msg.data[6]*10)
                 self.logger.debug("Remaining charging time (by by minute) %d", msg.data[7])
 
-        while True:
-            continue
-
         self.set_charge_permission(True)
         await self.sequence_2_event.wait()
         # self.state = StateType.charging
+        while True:
+            continue
 
 
     async def charging(self):
@@ -550,7 +640,7 @@ class Consumer:
                                 data=[  self.protocol_number.value,
                                         self.get_bat_voltage() & 0xFF,
                                         (self.get_bat_voltage() & 0xFF00) >> 8,
-                                        self.current_req,
+                                        self.get_curr(),
                                         self.get_fault_flag(),
                                         self.get_status_flag(),
                                         self.charged_rate,

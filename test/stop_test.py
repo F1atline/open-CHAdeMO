@@ -4,6 +4,7 @@ import sys
 import logging
 import pigpio
 import json
+import can
 from time import sleep
 from typing import List
 
@@ -24,6 +25,44 @@ else:
 logger.debug(settings)
 logger.debug("Start terminating test")
 pi = pigpio.pi()
+
+with can.Bus(channel = 'can1', bustype = 'socketcan') as bus:
+        bus.send(can.Message(   arbitration_id=0x102, 
+                                        dlc=8,
+                                        data=[  2,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                0, 
+                                                0x0 ], 
+                                        is_extended_id=False))
+
+        bus.send(can.Message(   arbitration_id=0x100, 
+                                        dlc=8,
+                                        data=[  0x0,
+                                                0x0,
+                                                0x0,
+                                                0x0,
+                                                0,
+                                                0,
+                                                0,
+                                                0x0 ],
+                                        is_extended_id=False))
+        bus.send(can.Message(   arbitration_id=0xFFF, 
+                                        dlc=8,
+                                        data=[  0xDE,
+                                                0xAD,
+                                                0xBE,
+                                                0xAF,
+                                                0xDE,
+                                                0xAD,
+                                                0xBE,
+                                                0xAF ],
+                                        is_extended_id=False))
+
+
 if not pi.connected:  # Check connection
     logger.warning("Not connected to PIGPIO Daemon")
     sys.exit(1)
