@@ -41,7 +41,8 @@ class GPIO(pigpio.pi):
         self.set_mode(pin, pin_direction)
         if pin_direction == pigpio.INPUT:
             self.set_pull_up_down(pin, pull_up_resistor)
-            self.set_noise_filter(pin, noise_ready, noise_active)
+            # self.set_noise_filter(pin, noise_ready, noise_active)
+            self.set_glitch_filter(pin, 100)
             return self.callback(user_gpio=pin, edge=edge, func=callback)
         else:
             return None

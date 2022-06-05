@@ -50,16 +50,17 @@ with can.Bus(channel = 'can1', bustype = 'socketcan') as bus:
                                                 0,
                                                 0x0 ],
                                         is_extended_id=False))
-        bus.send(can.Message(   arbitration_id=0xFFF, 
-                                        dlc=8,
-                                        data=[  0xDE,
-                                                0xAD,
-                                                0xBE,
-                                                0xAF,
-                                                0xDE,
-                                                0xAD,
-                                                0xBE,
-                                                0xAF ],
+        bus.send(can.Message(   arbitration_id=0x0, 
+                                        dlc=0,
+                                        data=[ ],
+                                        is_extended_id=False))
+        bus.send(can.Message(   arbitration_id=0x0, 
+                                        dlc=0,
+                                        data=[ ],
+                                        is_extended_id=False))
+        bus.send(can.Message(   arbitration_id=0x0, 
+                                        dlc=0,
+                                        data=[ ],
                                         is_extended_id=False))
 
 

@@ -1,3 +1,4 @@
+from sre_parse import State
 import sys
 import os
 import time
@@ -14,6 +15,9 @@ from typing import List, Dict
 from chademo.datatypes import *
 from chademo.enums import *
 from abc import abstractmethod
+
+logging.getLogger("can.interfaces.socketcan.socketcan").disabled = True
+logging.getLogger("can.interfaces.socketcan.socketcan.tx").disabled = True
 
 class LogColorsAndFormats:
     end =       '\033[0m'
@@ -365,36 +369,26 @@ class Consumer:
         # Create Notifier with an explicit loop to use for scheduling of callbacks
         self.reader = can.AsyncBufferedReader()
         self.listeners: List[can.notifier.MessageRecipient] = [
-            self.reader,
-            self.listener,
-            self.handle_message
+            self.reader#,
+            # self.listener,
+            # self.handle_message
             ]
         
-        self.notify = False
         self.notifier_loop = notifier_loop
         self.can_notifier = can.Notifier(self.canbus, self.listeners, loop=self.notifier_loop)
         # add events
         self.proximity_event = Event_thread_safe()
         self.sequence_1_event = Event_thread_safe()
         self.sequence_2_event = Event_thread_safe()
+        self.handshake = Event_thread_safe()
+        self.start = Event_thread_safe()
 
     @abstractmethod
     def GPIO_init(self):
         raise NotImplementedError
     
     @abstractmethod
-    def proximity_detection(self):
-        self.logger.debug("Detected the proximity signal")
-        raise NotImplementedError
-
-    @abstractmethod
-    def sequence_1_detection(self):
-        self.logger.debug("Detected the F signal (Charge sequence signal 1)")
-        raise NotImplementedError
-
-    @abstractmethod
-    def sequence_2_detection(self):
-        self.logger.debug("Detected the G signal (Charge sequence signal 2)")
+    def discrete_signal_detection(self):
         raise NotImplementedError
 
     @abstractmethod
@@ -427,7 +421,12 @@ class Consumer:
         return   ret
     
     def get_curr(self):
+        if self.state == StateType.charging:
+            self.current_req = self.max_battery_current - 2
+        else:
+            self.current_req = 0
         return self.current_req
+
     def get_bat_voltage(self):
         return self.target_voltage
 
@@ -442,45 +441,60 @@ class Consumer:
         current = min(self.max_battery_current, available_current)
 
         return self.battery_total_capacity/(current*self.get_bat_voltage()) * 1000
+
+    async def get_charger_notify(self):
+        await self.reader.get_message()
+        self.start.set()
+        while True:
+            msg = await self.reader.get_message()
+            if msg.arbitration_id == 0x109:
+                if (msg.data[5] & 0b10000) >> 4 == True:
+                    # self.notify_charger.cancel()
+                    asyncio.Task.current_task().cancel()
     
     async def notify_charger(self):
-        while(self.notify):
-            self.canbus.send(can.Message(   arbitration_id=0x102, 
-                                            dlc=8,
-                                            data=[  self.protocol_number.value,
-                                                    self.get_bat_voltage() & 0xFF,
-                                                    (self.get_bat_voltage() & 0xFF00) >> 8,
-                                                    self.get_curr(),
-                                                    self.get_fault_flag(),
-                                                    self.get_status_flag(),
-                                                    self.charged_rate, 
-                                                    0x0 ], 
-                                            is_extended_id=False))
+        await self.start.wait()
+        i = 0
+        while(True):
+            self.canbus.send(can.Message(   arbitration_id=0x100, 
+                                                dlc=8,
+                                                data=[  RESERVED,
+                                                        RESERVED,
+                                                        RESERVED,
+                                                        RESERVED,
+                                                        self.max_battery_voltage & 0xFF,
+                                                        (self.max_battery_voltage & 0xFF00) >> 8,
+                                                        self.charge_rate_ref_const,
+                                                        RESERVED ],
+                                                is_extended_id=False))
 
             self.canbus.send(can.Message(   arbitration_id=0x101, 
-                                            dlc=8,
-                                            data=[  0,
-                                                    0xFF,
-                                                    2,
-                                                    2,
-                                                    0,
-                                                    (self.battery_total_capacity * 1000) & 0xFF,
-                                                    ((self.battery_total_capacity * 1000) & 0xFF00) >> 8,
-                                                    0x0 ], 
-                                            is_extended_id=False))
+                                                dlc=8,
+                                                data=[  RESERVED,
+                                                        0xFF, #use minutes format
+                                                        self.estimated_charging_time, 
+                                                        self.estimated_charging_time,
+                                                        RESERVED,
+                                                        RESERVED,# (self.battery_total_capacity * 1000) & 0xFF,
+                                                        RESERVED,# ((self.battery_total_capacity * 1000) & 0xFF00) >> 8,
+                                                        RESERVED ], 
+                                                is_extended_id=False))
 
-            self.canbus.send(can.Message(   arbitration_id=0x100, 
-                                            dlc=8,
-                                            data=[  0x0,
-                                                    0x0,
-                                                    0x0,
-                                                    0x0,
-                                                    self.max_battery_voltage & 0xFF,
-                                                    (self.max_battery_voltage & 0xFF00) >> 8,
-                                                    self.charge_rate_ref_const,
-                                                    0x0 ],
-                                            is_extended_id=False))
+            self.canbus.send(can.Message(   arbitration_id=0x102, 
+                                                dlc=8,
+                                                data=[  self.protocol_number.value,
+                                                        self.get_bat_voltage() & 0xFF,
+                                                        (self.get_bat_voltage() & 0xFF00) >> 8,
+                                                        self.get_curr(),
+                                                        self.get_fault_flag(),
+                                                        self.get_status_flag(),
+                                                        self.charged_rate,
+                                                        RESERVED ], 
+                                                is_extended_id=False))
             await asyncio.sleep(0.1)
+            if i == 13:
+                self.handshake.set()
+            i=i+1
         
     async def off(self):
         await asyncio.sleep(1)
@@ -491,137 +505,161 @@ class Consumer:
         self.state = StateType.standby
 
     async def standby(self):
+        self.canbus.send(can.Message(   arbitration_id=0x01, 
+                                        dlc=0,
+                                        data=[ ],
+                                        is_extended_id=False))
+        self.state = StateType.precharge
         self.set_false_drive_preventing(True)
         self.logger.debug("Wait plugin the socket (Proximity signal)")
         await self.proximity_event.wait()
-
+        
         self.logger.debug("Wait the F signal (Charge sequence signal 1)")
         await self.sequence_1_event.wait()
+
+        self.canbus.send(can.Message(   arbitration_id=0x01, 
+                                        dlc=0,
+                                        data=[ ],
+                                        is_extended_id=False))
+        self.set_main_relay(True)
         self.state = StateType.precharge
+
         
 
     async def precharge(self):
+        # await asyncio.sleep(0.3)
+        await self.handshake.wait()
         self.status.vehicle_charging_enabled = ChargingStatusType.enabled
-        self.canbus.send(can.Message(   arbitration_id=0x102, 
-                                        dlc=8,
-                                        data=[  self.protocol_number.value,
-                                                self.get_bat_voltage() & 0xFF,
-                                                (self.get_bat_voltage() & 0xFF00) >> 8,
-                                                self.get_curr(),
-                                                self.get_fault_flag(),
-                                                self.get_status_flag(),
-                                                self.charged_rate, 
-                                                0x0 ], 
-                                        is_extended_id=False))
+        # self.canbus.send(can.Message(   arbitration_id=0x102, 
+        #                                 dlc=8,
+        #                                 data=[  self.protocol_number.value,
+        #                                         self.get_bat_voltage() & 0xFF,
+        #                                         (self.get_bat_voltage() & 0xFF00) >> 8,
+        #                                         self.get_curr(),
+        #                                         self.get_fault_flag(),
+        #                                         self.get_status_flag(),
+        #                                         self.charged_rate, 
+        #                                         0x0 ], 
+        #                                 is_extended_id=False))
 
-        self.canbus.send(can.Message(   arbitration_id=0x101, 
-                                        dlc=8,
-                                        data=[  0,
-                                                0xFF,
-                                                2,
-                                                2,
-                                                0,
-                                                (self.battery_total_capacity * 1000) & 0xFF,
-                                                ((self.battery_total_capacity * 1000) & 0xFF00) >> 8,
-                                                0x0 ], 
-                                        is_extended_id=False))
+        # self.canbus.send(can.Message(   arbitration_id=0x101, 
+        #                                 dlc=8,
+        #                                 data=[  0,
+        #                                         0xFF,
+        #                                         2,
+        #                                         2,
+        #                                         0,
+        #                                         (self.battery_total_capacity * 1000) & 0xFF,
+        #                                         ((self.battery_total_capacity * 1000) & 0xFF00) >> 8,
+        #                                         0x0 ], 
+        #                                 is_extended_id=False))
 
-        self.canbus.send(can.Message(   arbitration_id=0x100, 
-                                        dlc=8,
-                                        data=[  0x0,
-                                                0x0,
-                                                0x0,
-                                                0x0,
-                                                self.max_battery_voltage & 0xFF,
-                                                (self.max_battery_voltage & 0xFF00) >> 8,
-                                                self.charge_rate_ref_const,
-                                                0x0 ],
-                                        is_extended_id=False))
+        # self.canbus.send(can.Message(   arbitration_id=0x100, 
+        #                                 dlc=8,
+        #                                 data=[  0x0,
+        #                                         0x0,
+        #                                         0x0,
+        #                                         0x0,
+        #                                         self.max_battery_voltage & 0xFF,
+        #                                         (self.max_battery_voltage & 0xFF00) >> 8,
+        #                                         self.charge_rate_ref_const,
+        #                                         0x0 ],
+        #                                 is_extended_id=False))
 
-        compatibility = {   "protocol_number": False, "available_voltage": False,
-                            "available_current": False, "threshold_voltage": False}
+        # await asyncio.sleep(0.3)
 
-        while(  (compatibility.get("protocol_number") == False) 
-                or 
-                (compatibility.get("available_voltage") == False)
-                or 
-                (compatibility.get("available_current") == False) 
-                or 
-                (compatibility.get("threshold_voltage") == False)):                
+        # compatibility = {   "protocol_number": False, "available_voltage": False,
+        #                     "available_current": False, "threshold_voltage": False}
+
+        # while(  (compatibility.get("protocol_number") == False) 
+        #         or 
+        #         (compatibility.get("available_voltage") == False)
+        #         or 
+        #         (compatibility.get("available_current") == False) 
+        #         or 
+        #         (compatibility.get("threshold_voltage") == False)):                
             
-            msg = await self.reader.get_message()
-            # handle message with id 108
-            if msg.arbitration_id == 0x108:
-                if msg.data[0] == 0x00:
-                    # TODO add paarameter for branch with wielding
-                    self.logger.debug("Identifier of support for EV contactor welding detection: Not supporting EV contactor welding detection")
-                else:
-                    self.logger.debug("Identifier of support for EV contactor welding detection %d", msg.data[0])
+        #     msg = await self.reader.get_message()
+        #     # handle message with id 108
+        #     if msg.arbitration_id == 0x108:
+        #         if msg.data[0] == 0x00:
+        #             # TODO add paarameter for branch with wielding
+        #             self.logger.debug("Identifier of support for EV contactor welding detection: Not supporting EV contactor welding detection")
+        #         else:
+        #             self.logger.debug("Identifier of support for EV contactor welding detection %d", msg.data[0])
 
-                self.logger.debug("Available output voltage %d", msg.data[1] | msg.data[2]<<8)
-                if(compatibility["available_voltage"] == True):
-                    continue
-                if msg.data[1] | msg.data[2]<<8 < self.get_bat_voltage():
-                    self.logger.warning("EV battery target voltage more then available")
-                    raise AttributeError
-                else:
-                    self.logger.debug("pass checking available voltage")
-                    compatibility["available_voltage"] = True
+        #         self.logger.debug("Available output voltage %d", msg.data[1] | msg.data[2]<<8)
+        #         if(compatibility["available_voltage"] == True):
+        #             continue
+        #         if msg.data[1] | msg.data[2]<<8 < self.get_bat_voltage():
+        #             self.logger.warning("EV battery target voltage more then available")
+        #             raise AttributeError
+        #         else:
+        #             self.logger.debug("pass checking available voltage")
+        #             compatibility["available_voltage"] = True
                 
-                self.logger.debug("Available output current %d", msg.data[3])
-                if(compatibility["available_current"] == True):
-                    continue
-                if msg.data[3] == 0:
-                    self.logger.warning("Available output current %d", msg.data[3])
-                    raise AttributeError
-                else:
-                    self.max_charging_time = self.calculate_max_charging_time(msg.data[3])
-                    self.logger.debug("pass checking available current")
-                    compatibility["available_current"] = True
+        #         self.logger.debug("Available output current %d", msg.data[3])
+        #         if(compatibility["available_current"] == True):
+        #             continue
+        #         if msg.data[3] == 0:
+        #             self.logger.warning("Available output current %d", msg.data[3])
+        #             raise AttributeError
+        #         else:
+        #             self.max_charging_time = self.calculate_max_charging_time(msg.data[3])
+        #             self.logger.debug("pass checking available current")
+        #             compatibility["available_current"] = True
 
-                self.logger.debug("Threshold voltage %d", msg.data[4] | msg.data[5]<<8)
-                if(compatibility["threshold_voltage"] == True):
-                    continue
-                if msg.data[4] | msg.data[5]<<8 < self.get_bat_voltage():
-                    self.logger.warning("Threshold voltage %d", msg.data[4] | msg.data[5]<<8)
-                    raise AttributeError
-                else:
-                    # TODO add save and handling treshold voltaage for estimation charging time
-                    self.logger.debug("pass checking threshold voltage")
-                    compatibility["threshold_voltage"] = True
+        #         self.logger.debug("Threshold voltage %d", msg.data[4] | msg.data[5]<<8)
+        #         if(compatibility["threshold_voltage"] == True):
+        #             continue
+        #         if msg.data[4] | msg.data[5]<<8 < self.get_bat_voltage():
+        #             self.logger.warning("Threshold voltage %d", msg.data[4] | msg.data[5]<<8)
+        #             raise AttributeError
+        #         else:
+        #             # TODO add save and handling treshold voltaage for estimation charging time
+        #             self.logger.debug("pass checking threshold voltage")
+        #             compatibility["threshold_voltage"] = True
 
-            # handle message with id 109
-            if msg.arbitration_id == 0x109:
-                self.logger.debug("Protocol number %d", msg.data[0])
-                if(compatibility["protocol_number"] == True):
-                    continue
-                if msg.data[0] > self.protocol_number.value:
-                    self.logger.warning("EV protocol version higher than EVSE")
-                    # TODO change protocol version to 
-                    raise AttributeError
-                else:
-                    self.logger.debug("pass protocol version")
-                    compatibility["protocol_number"] = True
+        #     # handle message with id 109
+        #     if msg.arbitration_id == 0x109:
+        #         self.logger.debug("Protocol number %d", msg.data[0])
+        #         if(compatibility["protocol_number"] == True):
+        #             continue
+        #         if msg.data[0] > self.protocol_number.value:
+        #             self.logger.warning("EV protocol version higher than EVSE")
+        #             # TODO change protocol version to 
+        #             raise AttributeError
+        #         else:
+        #             self.logger.debug("pass protocol version")
+        #             compatibility["protocol_number"] = True
                     
-                self.logger.debug("Present output voltage %d", msg.data[1] | msg.data[2]<<8)
-                self.logger.debug("Present charging current %d", msg.data[3])
-                self.logger.debug("Charger status / fault flag %d", msg.data[5])
+        #         self.logger.debug("Present output voltage %d", msg.data[1] | msg.data[2]<<8)
+        #         self.logger.debug("Present charging current %d", msg.data[3])
+        #         self.logger.debug("Charger status / fault flag %d", msg.data[5])
 
-                self.charger_status = self.raw_to_charger_status_type(msg.data[5])
+        #         self.charger_status = self.raw_to_charger_status_type(msg.data[5])
 
-                # self.logger.debug("Charger status / fault flag: %s %s %s %s %s %s", self.charger_status.charger_status.name, self.charger_status.charger_malfunction.name, self.charger_status.сharging_connector_lock.name,
-                #                                                                     self.charger_status.battery_incompatibility.name, self.charger_status.charging_system_malfunction.name, self.charger_status.charging_stop_control.name)
-                if msg.data[6] == 0xFF:
-                    self.logger.debug("Maximum charging time (by seconds): usage by minute")
-                else:
-                    self.logger.debug("Maximum charging time (by seconds) %d", msg.data[6]*10)
-                self.logger.debug("Remaining charging time (by by minute) %d", msg.data[7])
+        #         # self.logger.debug("Charger status / fault flag: %s %s %s %s %s %s", self.charger_status.charger_status.name, self.charger_status.charger_malfunction.name, self.charger_status.сharging_connector_lock.name,
+        #         #                                                                     self.charger_status.battery_incompatibility.name, self.charger_status.charging_system_malfunction.name, self.charger_status.charging_stop_control.name)
+        #         if msg.data[6] == 0xFF:
+        #             self.logger.debug("Maximum charging time (by seconds): usage by minute")
+        #         else:
+        #             self.logger.debug("Maximum charging time (by seconds) %d", msg.data[6]*10)
+        #         self.logger.debug("Remaining charging time (by by minute) %d", msg.data[7])
 
         self.set_charge_permission(True)
+        self.canbus.send(can.Message(   arbitration_id=0x02, 
+                                        dlc=0,
+                                        data=[ ],
+                                        is_extended_id=False))
         await self.sequence_2_event.wait()
-        # self.state = StateType.charging
-        while True:
-            continue
+        self.canbus.send(can.Message(   arbitration_id=0x03, 
+                                        dlc=0,
+                                        data=[ ],
+                                        is_extended_id=False))
+        self.state = StateType.charging
+        # while True:
+        #     continue
 
 
     async def charging(self):
@@ -632,38 +670,39 @@ class Consumer:
         # calculate current
 
         # TODO add current req calculation
-
+        await asyncio.sleep(1)
         self.status.vehicle_status = EVContactorType.close
-        self.current_req = 10
-        self.canbus.send(can.Message(   arbitration_id=0x102, 
-                                dlc=8,
-                                data=[  self.protocol_number.value,
-                                        self.get_bat_voltage() & 0xFF,
-                                        (self.get_bat_voltage() & 0xFF00) >> 8,
-                                        self.get_curr(),
-                                        self.get_fault_flag(),
-                                        self.get_status_flag(),
-                                        self.charged_rate,
-                                        0x0 ], 
-                                is_extended_id=False))
 
-        self.set_main_relay(True)
+        # self.canbus.send(can.Message(   arbitration_id=0x102, 
+        #                         dlc=8,
+        #                         data=[  self.protocol_number.value,
+        #                                 self.get_bat_voltage() & 0xFF,
+        #                                 (self.get_bat_voltage() & 0xFF00) >> 8,
+        #                                 self.get_curr(),
+        #                                 self.get_fault_flag(),
+        #                                 self.get_status_flag(),
+        #                                 self.charged_rate,
+        #                                 0x0 ], 
+        #                         is_extended_id=False))
 
-        charge_period = time.time() + self.estimated_charging_time # FIXME add calculation estimation charge time
+        
+
+        charge_period = time.time() + (self.estimated_charging_time * 60) # FIXME add calculation estimation charge time
         while time.time() > charge_period:
-            # TODO calculate current
-            self.canbus.send(can.Message(   arbitration_id=0x102, 
-                        dlc=8,
-                        data=[  self.protocol_number.value,
-                                self.get_bat_voltage() & 0xFF,
-                                (self.get_bat_voltage() & 0xFF00) >> 8,
-                                self.current_req,
-                                self.get_fault_flag(),
-                                self.get_status_flag(),
-                                self.charged_rate,
-                                0x0 ], 
-                        is_extended_id=False))
-            await asyncio.sleep(0.1)
+        #     # TODO calculate current
+        #     self.canbus.send(can.Message(   arbitration_id=0x102, 
+        #                 dlc=8,
+        #                 data=[  self.protocol_number.value,
+        #                         self.get_bat_voltage() & 0xFF,
+        #                         (self.get_bat_voltage() & 0xFF00) >> 8,
+        #                         self.current_req,
+        #                         self.get_fault_flag(),
+        #                         self.get_status_flag(),
+        #                         self.charged_rate,
+        #                         0x0 ], 
+        #                 is_extended_id=False))
+            await asyncio.sleep(1)
+        await asyncio.sleep(0.1)
 
         self.state = StateType.finish
         # TODO send current request or go to finish
@@ -753,34 +792,4 @@ class Consumer:
     def listener(self, msg: can.Message) -> None:
         """Regular callback function. Can also be a coroutine."""
         self.logger.debug(msg)
-
-async def main() -> None:
-    loop=asyncio.get_running_loop()
-    charger = Source(name = "CH",   notifier_loop=loop,
-                                    available_output_current=settings.get("CH_available_output_current"))
-                                    
-    ev = Consumer(name = "EV",  notifier_loop=loop,
-                                max_battery_voltage=settings.get("EV_max_battery_voltage"),
-                                max_battery_current=settings.get("EV_max_battery_current"),
-                                voltage=settings.get("EV_battery_voltage"),
-                                battery_total_capacity=settings.get("EV_battery_total_capacity"))
-    logging.info("Started!")
-    await asyncio.gather(charger.scheduler(), ev.scheduler())
-    # await asyncio.gather(ev.scheduler())
-
-    # Clean-up
-    charger.can_notifier.stop()
-    ev.can_notifier.stop()
-
-def shutdown():
-    print("Call shutdown func")
-
-if __name__ == '__main__':
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-    # except KeyboardInterrupt:
-        shutdown()
-        print("Finish!")
-        sys.exit(1)
     
