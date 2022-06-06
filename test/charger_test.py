@@ -151,7 +151,7 @@ async def main() -> None:
 
     ev.charged_rate = 50
 
-    await asyncio.gather(ev.scheduler(), ev.notify_charger(), ev.get_charger_notify())
+    await asyncio.gather(ev.scheduler())#, ev.notify_charger(), ev.get_charger_notify())
 
 def shutdown():
     logging.warning("Shutdown!")

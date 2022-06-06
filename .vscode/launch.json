@@ -29,7 +29,7 @@
                 // electrical
                 "{\\\"EV_battery_voltage\\\":200}",
                 "{\\\"EV_max_battery_voltage\\\":230}",
-                "{\\\"EV_max_battery_current\\\":32}",
+                "{\\\"EV_max_battery_current\\\":10}",
                 "{\\\"EV_battery_total_capacity\\\":40}",
                 // GPIO (use GPIO number - not socket pin number)
                 "{\\\"EVGPIO_charge_seq_1\\\":27}",

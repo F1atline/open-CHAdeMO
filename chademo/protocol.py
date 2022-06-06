@@ -382,7 +382,7 @@ class Consumer:
         self.proximity_event = Event_thread_safe()
         self.sequence_1_event = Event_thread_safe()
         self.sequence_2_event = Event_thread_safe()
-        self.handshake = Event_thread_safe()
+        # self.handshake = Event_thread_safe()
         self.start = Event_thread_safe()
 
         self.ch_weld_detection: int = 0
@@ -559,10 +559,7 @@ class Consumer:
         self.state = StateType.standby
 
     async def standby(self):
-        self.canbus.send(can.Message(   arbitration_id=0x01, 
-                                        dlc=0,
-                                        data=[ ],
-                                        is_extended_id=False))
+
         self.state = StateType.precharge
         self.set_false_drive_preventing(True)
         self.logger.debug("Wait plugin the socket (Proximity signal)")
@@ -572,7 +569,7 @@ class Consumer:
         await self.sequence_1_event.wait()
 
         try:
-            await asyncio.wait_for(self.handshake(), timeout=3.0)
+            await asyncio.wait_for(self.handshake(), timeout=10.0)
         except asyncio.TimeoutError:
             self.logger.error("CAN BUS handshake timeout!")
         if self.ch_status != 20:
@@ -583,7 +580,8 @@ class Consumer:
     async def precharge(self):
         self.charge_rate_ref_const = 100
         self.charged_rate = 50
-        self.status = self.status | 0x80
+        self.status = self.status
+        print(self.status)
 
         for _ in range (1, 33):
             self.canbus.send(can.Message(   arbitration_id=0x102, 
@@ -705,7 +703,7 @@ class Consumer:
         #         self.logger.debug("Remaining charging time (by by minute) %d", msg.data[7])
 
         self.set_charge_permission(True)
-
+        self.status.vehicle_status = EVContactorType.close
         self.canbus.send(can.Message(   arbitration_id=0x102, 
                                         dlc=8,
                                         data=[  self.protocol_number.value,
@@ -713,7 +711,7 @@ class Consumer:
                                                 (self.get_bat_voltage() & 0xFF00) >> 8,
                                                 self.get_curr(),
                                                 self.get_fault_flag(),
-                                                self.get_status_flag(),
+                                                0x89,# self.get_status_flag(),
                                                 self.charged_rate, 
                                                 RESERVED ], 
                                         is_extended_id=False))
@@ -745,7 +743,7 @@ class Consumer:
         self.set_main_relay(True)
 
         await self.sequence_2_event.wait()
-
+        self.set_main_relay(True)
         self.state = StateType.charging
         # while True:
         #     continue
