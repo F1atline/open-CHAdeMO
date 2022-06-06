@@ -463,7 +463,8 @@ class Consumer:
             if msg.arbitration_id == 0x109:
                 if (msg.data[5] & 0b10000) >> 4 == True:
                     # self.notify_charger.cancel()
-                    asyncio.Task.current_task().cancel()
+                    # asyncio.Task.current_task().cancel()
+                    self.logger.error("Charger malfunction!")
     
     async def notify_charger(self):
         await self.start.wait()
@@ -519,7 +520,7 @@ class Consumer:
                                                     RESERVED,
                                                     self.max_battery_voltage & 0xFF,
                                                     (self.max_battery_voltage & 0xFF00) >> 8,
-                                                    self.charge_rate_ref_const,
+                                                    0xF0, # value from leaf logs
                                                     RESERVED ],
                                             is_extended_id=False))
             self.canbus.send(can.Message(   arbitration_id=0x101, 
@@ -534,10 +535,11 @@ class Consumer:
                                                     0x0, #zero current
                                                     self.get_fault_flag(),
                                                     0x80, # value from leaf logs
-                                                    self.charged_rate,
-                                                    0x03 ], # value from leaf logs
+                                                    0x03, # value from leaf logs
+                                                    RESERVED ], 
                                             is_extended_id=False))
             asyncio.sleep(0.1)
+
         msg = await self.reader.get_message()
         if msg.arbitration_id == 0x108:
             self.ch_weld_detection = msg.data[0]
@@ -576,49 +578,52 @@ class Consumer:
         if self.ch_status != 20:
             self.logger.error("Incorrect charger status: " + hex(self.ch_status))
         self.state = StateType.precharge
-
         
 
     async def precharge(self):
-        # TODO set actual vlue
+        self.charge_rate_ref_const = 100
+        self.charged_rate = 50
+        self.status = self.status | 0x80
 
-        # self.canbus.send(can.Message(   arbitration_id=0x102, 
-        #                                 dlc=8,
-        #                                 data=[  self.protocol_number.value,
-        #                                         self.get_bat_voltage() & 0xFF,
-        #                                         (self.get_bat_voltage() & 0xFF00) >> 8,
-        #                                         self.get_curr(),
-        #                                         self.get_fault_flag(),
-        #                                         self.get_status_flag(),
-        #                                         self.charged_rate, 
-        #                                         0x0 ], 
-        #                                 is_extended_id=False))
+        for _ in range (1, 33):
+            self.canbus.send(can.Message(   arbitration_id=0x102, 
+                                            dlc=8,
+                                            data=[  self.protocol_number.value,
+                                                    self.get_bat_voltage() & 0xFF,
+                                                    (self.get_bat_voltage() & 0xFF00) >> 8,
+                                                    self.get_curr(),
+                                                    self.get_fault_flag(),
+                                                    self.get_status_flag(),
+                                                    self.charged_rate, 
+                                                    RESERVED ], 
+                                            is_extended_id=False))
 
-        # self.canbus.send(can.Message(   arbitration_id=0x101, 
-        #                                 dlc=8,
-        #                                 data=[  0,
-        #                                         0xFF,
-        #                                         2,
-        #                                         2,
-        #                                         0,
-        #                                         (self.battery_total_capacity * 1000) & 0xFF,
-        #                                         ((self.battery_total_capacity * 1000) & 0xFF00) >> 8,
-        #                                         0x0 ], 
-        #                                 is_extended_id=False))
+            self.canbus.send(can.Message(   arbitration_id=0x101, 
+                                            dlc=8,
+                                            data=[  0,
+                                                    0,
+                                                    0,
+                                                    0,
+                                                    0,
+                                                    (self.battery_total_capacity * 1000) & 0xFF,
+                                                    ((self.battery_total_capacity * 1000) & 0xFF00) >> 8,
+                                                    RESERVED ], 
+                                            is_extended_id=False))
 
-        # self.canbus.send(can.Message(   arbitration_id=0x100, 
-        #                                 dlc=8,
-        #                                 data=[  0x0,
-        #                                         0x0,
-        #                                         0x0,
-        #                                         0x0,
-        #                                         self.max_battery_voltage & 0xFF,
-        #                                         (self.max_battery_voltage & 0xFF00) >> 8,
-        #                                         self.charge_rate_ref_const,
-        #                                         0x0 ],
-        #                                 is_extended_id=False))
-
-        # await asyncio.sleep(0.3)
+            self.canbus.send(can.Message(   arbitration_id=0x100, 
+                                            dlc=8,
+                                            data=[  self.min_charge_current,
+                                                    RESERVED,
+                                                    RESERVED,
+                                                    RESERVED,
+                                                    self.max_battery_voltage & 0xFF,
+                                                    (self.max_battery_voltage & 0xFF00) >> 8,
+                                                    self.charge_rate_ref_const,
+                                                    RESERVED ],
+                                            is_extended_id=False))
+            await self.reader.get_message()
+            await self.reader.get_message()
+            
 
         # compatibility = {   "protocol_number": False, "available_voltage": False,
         #                     "available_current": False, "threshold_voltage": False}
@@ -701,13 +706,46 @@ class Consumer:
 
         self.set_charge_permission(True)
 
+        self.canbus.send(can.Message(   arbitration_id=0x102, 
+                                        dlc=8,
+                                        data=[  self.protocol_number.value,
+                                                self.get_bat_voltage() & 0xFF,
+                                                (self.get_bat_voltage() & 0xFF00) >> 8,
+                                                self.get_curr(),
+                                                self.get_fault_flag(),
+                                                self.get_status_flag(),
+                                                self.charged_rate, 
+                                                RESERVED ], 
+                                        is_extended_id=False))
+
+        self.canbus.send(can.Message(   arbitration_id=0x101, 
+                                        dlc=8,
+                                        data=[  0,
+                                                0,
+                                                0,
+                                                0,
+                                                0,
+                                                (self.battery_total_capacity * 1000) & 0xFF,
+                                                ((self.battery_total_capacity * 1000) & 0xFF00) >> 8,
+                                                RESERVED ], 
+                                        is_extended_id=False))
+
+        self.canbus.send(can.Message(   arbitration_id=0x100, 
+                                        dlc=8,
+                                        data=[  self.min_charge_current,
+                                                RESERVED,
+                                                RESERVED,
+                                                RESERVED,
+                                                self.max_battery_voltage & 0xFF,
+                                                (self.max_battery_voltage & 0xFF00) >> 8,
+                                                self.charge_rate_ref_const,
+                                                RESERVED ],
+                                        is_extended_id=False))
+
         self.set_main_relay(True)
 
         await self.sequence_2_event.wait()
-        self.canbus.send(can.Message(   arbitration_id=0x03, 
-                                        dlc=0,
-                                        data=[ ],
-                                        is_extended_id=False))
+
         self.state = StateType.charging
         # while True:
         #     continue
