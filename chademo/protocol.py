@@ -435,7 +435,7 @@ class Consumer:
     
     def get_curr(self):
         if self.state == StateType.charging:
-            self.current_req = self.max_battery_current - 2
+            self.current_req = self.max_battery_current
         else:
             self.current_req = 0
         return self.current_req
@@ -538,7 +538,7 @@ class Consumer:
                                                     0x03, # value from leaf logs
                                                     RESERVED ], 
                                             is_extended_id=False))
-            asyncio.sleep(0.1)
+            await asyncio.sleep(0.1)
 
         msg = await self.reader.get_message()
         if msg.arbitration_id == 0x108:
@@ -740,8 +740,6 @@ class Consumer:
                                                 RESERVED ],
                                         is_extended_id=False))
 
-        self.set_main_relay(True)
-
         await self.sequence_2_event.wait()
         self.set_main_relay(True)
         self.state = StateType.charging
@@ -750,46 +748,53 @@ class Consumer:
 
 
     async def charging(self):
-        # while True:
-        #     await asyncio.sleep(1)
-        #     continue
-        # check erorrs
         # calculate current
 
         # TODO add current req calculation
-        await asyncio.sleep(1)
         self.status.vehicle_status = EVContactorType.close
 
-        # self.canbus.send(can.Message(   arbitration_id=0x102, 
-        #                         dlc=8,
-        #                         data=[  self.protocol_number.value,
-        #                                 self.get_bat_voltage() & 0xFF,
-        #                                 (self.get_bat_voltage() & 0xFF00) >> 8,
-        #                                 self.get_curr(),
-        #                                 self.get_fault_flag(),
-        #                                 self.get_status_flag(),
-        #                                 self.charged_rate,
-        #                                 0x0 ], 
-        #                         is_extended_id=False))
-
         
-
+        i = 0
         charge_period = time.time() + (self.estimated_charging_time * 60) # FIXME add calculation estimation charge time
-        while time.time() > charge_period:
-        #     # TODO calculate current
-        #     self.canbus.send(can.Message(   arbitration_id=0x102, 
-        #                 dlc=8,
-        #                 data=[  self.protocol_number.value,
-        #                         self.get_bat_voltage() & 0xFF,
-        #                         (self.get_bat_voltage() & 0xFF00) >> 8,
-        #                         self.current_req,
-        #                         self.get_fault_flag(),
-        #                         self.get_status_flag(),
-        #                         self.charged_rate,
-        #                         0x0 ], 
-        #                 is_extended_id=False))
-            await asyncio.sleep(1)
-        await asyncio.sleep(0.1)
+        while time.time() <= charge_period:
+            # TODO calculate current
+            if i <= self.current_req:
+                i = i + 1
+            self.canbus.send(can.Message(   arbitration_id=0x102, 
+                        dlc=8,
+                        data=[  self.protocol_number.value,
+                                0x90,# self.get_bat_voltage() & 0xFF,
+                                0x01,# (self.get_bat_voltage() & 0xFF00) >> 8,
+                                23,
+                                0,
+                                0x81,
+                                self.charged_rate,
+                                0x0 ], 
+                        is_extended_id=False))
+            self.canbus.send(can.Message(   arbitration_id=0x101, 
+                                            dlc=8,
+                                            data=[  0,
+                                                    0,
+                                                    0,
+                                                    0,
+                                                    0,
+                                                    (self.battery_total_capacity * 1000) & 0xFF,
+                                                    ((self.battery_total_capacity * 1000) & 0xFF00) >> 8,
+                                                    RESERVED ], 
+                                            is_extended_id=False))
+
+            self.canbus.send(can.Message(   arbitration_id=0x100, 
+                                            dlc=8,
+                                            data=[  self.min_charge_current,
+                                                    RESERVED,
+                                                    RESERVED,
+                                                    RESERVED,
+                                                    self.max_battery_voltage & 0xFF,
+                                                    (self.max_battery_voltage & 0xFF00) >> 8,
+                                                    self.charge_rate_ref_const,
+                                                    RESERVED ],
+                                            is_extended_id=False))
+            await asyncio.sleep(0.1)
 
         self.state = StateType.finish
         # TODO send current request or go to finish
@@ -820,7 +825,7 @@ class Consumer:
                     (self.get_bat_voltage() & 0xFF00) >> 8,
                     0x0,
                     self.get_fault_flag(),
-                    self.get_status_flag(),
+                    0x80,# self.get_status_flag(),
                     self.charged_rate,
                     0x0 ], 
             is_extended_id=False))

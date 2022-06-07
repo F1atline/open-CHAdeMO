@@ -149,7 +149,7 @@ async def main() -> None:
                                             high_battery_temperature = FaultType.normal,
                                             battery_voltage_deviation_error = FaultType.normal)
 
-    ev.charged_rate = 50
+    ev.charged_rate = 51
 
     await asyncio.gather(ev.scheduler())#, ev.notify_charger(), ev.get_charger_notify())
 
