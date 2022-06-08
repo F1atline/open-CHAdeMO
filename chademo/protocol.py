@@ -754,18 +754,20 @@ class Consumer:
         self.status.vehicle_status = EVContactorType.close
 
         
-        i = 0
+        self.current = self.min_charge_current
         charge_period = time.time() + (self.estimated_charging_time * 60) # FIXME add calculation estimation charge time
         while time.time() <= charge_period:
             # TODO calculate current
-            if i <= self.current_req:
-                i = i + 1
+            if self.current <= 75:
+                self.current = self.current + 1
+            if self.current > 75:
+                self.current = 75
             self.canbus.send(can.Message(   arbitration_id=0x102, 
                         dlc=8,
                         data=[  self.protocol_number.value,
                                 0x90,# self.get_bat_voltage() & 0xFF,
                                 0x01,# (self.get_bat_voltage() & 0xFF00) >> 8,
-                                23,
+                                self.current,
                                 0,
                                 0x81,
                                 self.charged_rate,
@@ -800,6 +802,50 @@ class Consumer:
         # TODO send current request or go to finish
 
     async def finish(self):
+        
+        dis_charge_period = time.time() + 60# FIXME add calculation estimation charge time
+        while time.time() <= dis_charge_period:
+            # TODO calculate current
+            if self.current >= 6:
+                self.current = self.current - 5
+            if self.current <= 0:
+                self.current = 0
+            self.canbus.send(can.Message(   arbitration_id=0x102, 
+                        dlc=8,
+                        data=[  self.protocol_number.value,
+                                0x90,# self.get_bat_voltage() & 0xFF,
+                                0x01,# (self.get_bat_voltage() & 0xFF00) >> 8,
+                                self.current,
+                                0,
+                                0x81,
+                                self.charged_rate,
+                                0x0 ], 
+                        is_extended_id=False))
+            self.canbus.send(can.Message(   arbitration_id=0x101, 
+                                            dlc=8,
+                                            data=[  0,
+                                                    0,
+                                                    0,
+                                                    0,
+                                                    0,
+                                                    (self.battery_total_capacity * 1000) & 0xFF,
+                                                    ((self.battery_total_capacity * 1000) & 0xFF00) >> 8,
+                                                    RESERVED ], 
+                                            is_extended_id=False))
+
+            self.canbus.send(can.Message(   arbitration_id=0x100, 
+                                            dlc=8,
+                                            data=[  self.min_charge_current,
+                                                    RESERVED,
+                                                    RESERVED,
+                                                    RESERVED,
+                                                    self.max_battery_voltage & 0xFF,
+                                                    (self.max_battery_voltage & 0xFF00) >> 8,
+                                                    self.charge_rate_ref_const,
+                                                    RESERVED ],
+                                            is_extended_id=False))
+            await asyncio.sleep(0.1)
+
         self.status.vehicle_charging_enabled = ChargingStatusType.disabled
         self.canbus.send(can.Message(   arbitration_id=0x102, 
             dlc=8,
@@ -810,8 +856,10 @@ class Consumer:
                     self.get_fault_flag(),
                     self.get_status_flag(),
                     self.charged_rate,
-                    0x0 ], 
+                    0x0 ],
             is_extended_id=False))
+
+
         await asyncio.sleep(1)
         # Check that DC current is less than 5A
         self.set_main_relay(False)

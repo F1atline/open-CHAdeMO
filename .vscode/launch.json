@@ -29,7 +29,7 @@
                 // electrical
                 "{\\\"EV_battery_voltage\\\":390}",
                 "{\\\"EV_max_battery_voltage\\\":410}",
-                "{\\\"EV_max_battery_current\\\":23}",
+                "{\\\"EV_max_battery_current\\\":75}",
                 "{\\\"EV_battery_total_capacity\\\":40}",
                 // GPIO (use GPIO number - not socket pin number)
                 "{\\\"EVGPIO_charge_seq_1\\\":27}",
@@ -39,7 +39,7 @@
                 "{\\\"EVGPIO_PE_fault\\\":16}",
                 "{\\\"EVGPIO_main_relay\\\":17}",
                 // Charging time in minutes
-                "{\\\"EV_charging_period\\\":20}"
+                "{\\\"EV_charging_period\\\":30}"
             ]
         }
     ]
